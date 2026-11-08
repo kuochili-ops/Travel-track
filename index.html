@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 交通工具放大與動態視角隨動縮放</title>
+  <title>3D 漫遊旅程動畫 - 清空紀錄確認彈窗防呆機制</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -76,7 +76,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">交通工具放大與動態視角隨動縮放</p>
+        <p class="text-[10px] text-gray-400">清空紀錄確認彈窗防呆機制</p>
       </div>
     </div>
 
@@ -630,7 +630,6 @@
       updateVehiclePosition(currentProgress);
     }
 
-    // 🔍 動態計算交通工具隨鏡頭高度（畫面縮放）適度調整比例
     function updateVehiclePosition(progress) {
       if (segments.length === 0) return;
 
@@ -652,7 +651,7 @@
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
 
-      // 🔍 載具尺寸基礎放大 + 畫面拉近/拉遠時動態適度開方響應縮放
+      // 🔍 載具尺寸基礎放大 + 畫面拉近/拉遠時動態開方響應縮放
       const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const camAlt = Math.max(0.1, cameraDistance - EARTH_RADIUS);
       const vehicleScale = Math.max(0.12, Math.min(1.8, (0.10 + Math.sqrt(camAlt) * 0.22)));
@@ -1017,7 +1016,17 @@
       renderSegmentList();
     }
 
+    // ⚠️ 清空所有紀錄防呆彈窗機制
     function clearAllSegments() {
+      if (segments.length === 0) {
+        alert("目前尚無行程紀錄可清空！");
+        return;
+      }
+
+      if (!confirm("⚠️ 確定要清空所有行程紀錄嗎？此動作將無法復原。")) {
+        return;
+      }
+
       segments = [];
       if (vehicleMesh) {
         scene.remove(vehicleMesh);
