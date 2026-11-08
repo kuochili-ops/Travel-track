@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D 漫遊旅程動畫 - 雙節關節拖曳與視角自動聚焦</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+    .glass-panel { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.4); border-radius: 3px; }
+    
+    .journey-label {
+      position: absolute;
+      transform: translate(-50%, -115%);
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 15;
+    }
+  </style>
+</head>
+<body class="text-white select-none">
+
+  <!-- 3D Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- 🔴 錄影中狀態標籤 -->
+  <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-30 hidden pointer-events-none">
+    <div class="bg-red-500/90 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-2 shadow-lg animate-pulse">
+      <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
+      <span>🔴 錄影中 (Recording...)</span>
+    </div>
+  </div>
+
+  <!-- 3D 浮動資訊標籤容器 -->
+  <div id="label-dep" class="journey-label hidden">
+    <div class="glass-panel px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-xl flex flex-col items-center">
+      <div class="flex items-center space-x-1.5 text-cyan-300 font-bold text-xs">
+        <i class="fa-solid fa-location-dot"></i>
+        <span id="txt-dep-name">出發地</span>
+      </div>
+      <div class="text-[9px] text-gray-300 font-mono" id="txt-dep-date">2026-11-07</div>
+    </div>
+  </div>
+
+  <div id="label-arr" class="journey-label hidden">
+    <div class="glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5">
+      <div class="flex items-center space-x-1.5 text-amber-300 font-bold text-xs">
+        <i class="fa-solid fa-flag-checkered"></i>
+        <span id="txt-arr-name">到達地</span>
+      </div>
+      <div class="text-[9px] text-gray-300 font-mono" id="txt-arr-date">2026-11-07</div>
+      <div class="flex items-center space-x-1 text-[9px] text-cyan-400 font-mono pt-0.5 border-t border-white/10 w-full justify-center">
+        <i class="fa-solid fa-wind"></i>
+        <span id="txt-arr-wind">地面風: 東北風 14 km/h</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header Panel -->
+  <div class="fixed top-4 left-4 right-4 z-20 flex justify-between items-center pointer-events-none">
+    <div class="glass-panel rounded-2xl px-4 py-2.5 flex items-center space-x-3 pointer-events-auto shadow-lg">
+      <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center">
+        <i class="fa-solid fa-earth-asia text-white text-sm"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
+        <p class="text-[10px] text-gray-400">雙節火車關節拖曳與流暢行進</p>
+      </div>
+    </div>
+
+    <!-- Action Menu Toggle -->
+    <div class="flex items-center space-x-2 pointer-events-auto">
+      <button id="btn-toggle-menu" onclick="toggleMenu()" class="glass-panel w-11 h-11 rounded-2xl flex items-center justify-center text-cyan-400 hover:text-white transition shadow-lg">
+        <i class="fa-solid fa-bars text-lg"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Action Menu -->
+  <div id="action-menu" class="fixed top-16 right-4 z-30 flex-col space-y-2 hidden pointer-events-auto w-64">
+    <button onclick="openFormModal()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-cyan-300 hover:bg-cyan-500/20 transition shadow-lg">
+      <span class="flex items-center space-x-2">
+        <i class="fa-solid fa-plus text-sm"></i>
+        <span>新增行程記錄</span>
+      </span>
+      <i class="fa-solid fa-chevron-right text-[10px]"></i>
+    </button>
+
+    <button onclick="openFormListModal()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-amber-300 hover:bg-amber-500/20 transition shadow-lg">
+      <span class="flex items-center space-x-2">
+        <i class="fa-solid fa-list-check text-sm"></i>
+        <span>管理與修改行程 (<span id="count-segments">0</span>)</span>
+      </span>
+      <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+    </button>
+
+    <button onclick="shareItinerary()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 text-emerald-300 hover:bg-emerald-500/20 transition shadow-lg">
+      <i class="fa-solid fa-share-nodes text-sm"></i>
+      <span>分享行程網址 (含路程)</span>
+    </button>
+
+    <button onclick="toggleRecording()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 text-rose-300 hover:bg-rose-500/20 transition shadow-lg">
+      <i class="fa-solid fa-video text-sm"></i>
+      <span id="txt-rec-btn">錄影整段行程</span>
+    </button>
+
+    <button id="btn-camera-mode" onclick="toggleCameraFollow()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-gray-300 hover:bg-white/10 transition shadow-lg">
+      <span class="flex items-center space-x-2">
+        <i class="fa-solid fa-camera text-sm"></i>
+        <span id="txt-camera-mode">跟隨交通工具</span>
+      </span>
+      <i id="icon-camera-status" class="fa-solid fa-toggle-off text-sm text-gray-400"></i>
+    </button>
+
+    <button onclick="clearAllSegments()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 text-red-400 hover:bg-red-500/20 transition shadow-lg">
+      <i class="fa-solid fa-trash text-sm"></i>
+      <span>清空所有紀錄</span>
+    </button>
+  </div>
+
+  <!-- Bottom Playbar Dock -->
+  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-lg glass-panel rounded-3xl p-3 flex items-center justify-between shadow-2xl pointer-events-auto">
+    <button onclick="togglePlay()" id="btn-play" class="w-12 h-12 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center transition shadow-lg">
+      <i id="icon-play" class="fa-solid fa-play text-lg"></i>
+    </button>
+
+    <div class="flex-1 mx-4">
+      <div class="flex justify-between text-[11px] text-gray-400 mb-1 font-mono">
+        <span id="current-leg-title">等待輸入行程...</span>
+        <span id="playback-speed-label">1x</span>
+      </div>
+      <input type="range" id="progress-bar" min="0" max="100" value="0" step="0.1" oninput="seekProgress(this.value)" class="w-full accent-cyan-400 h-1.5 bg-gray-700/60 rounded-lg cursor-pointer">
+    </div>
+
+    <button onclick="cycleSpeed()" class="glass-panel px-3 py-2 rounded-xl text-xs font-mono font-bold text-cyan-300 hover:bg-cyan-500/20 transition">
+      <span id="btn-speed-text">1x</span>
+    </button>
+  </div>
+
+  <!-- Form Modal -->
+  <div id="modal-form" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 border border-white/20">
+      <div class="flex justify-between items-center border-b border-white/10 pb-3">
+        <h3 class="text-base font-bold flex items-center space-x-2 text-cyan-300">
+          <i class="fa-solid fa-route"></i>
+          <span id="form-modal-title">新增行程記錄</span>
+        </h3>
+        <button onclick="closeFormModal()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <input type="hidden" id="editing-index" value="-1">
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-gray-400 mb-1">交通工具</label>
+          <select id="input-mode" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
+            <option value="car">🚗 汽車 / 自駕 (Car - 走公路網)</option>
+            <option value="bus">🚌 巴士 / 客運 (Bus - 走公路網)</option>
+            <option value="train">🚆 火車 / 新幹線 (Train - 雙節關節連線)</option>
+            <option value="ferry">🚢 渡輪 / 輪船 (Ferry)</option>
+            <option value="plane">✈️ 飛機 (Airplane)</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-gray-400 mb-1">出發地點</label>
+            <input type="text" id="input-from" placeholder="例如: 台北" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
+          </div>
+          <div>
+            <label class="block text-gray-400 mb-1">到達地點</label>
+            <input type="text" id="input-to" placeholder="例如: 基隆" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-gray-400 mb-1">出發日期</label>
+            <input type="date" id="input-dep-date" onchange="autoSetArrivalDate()" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
+          </div>
+          <div>
+            <label class="block text-gray-400 mb-1">到達日期</label>
+            <input type="date" id="input-arr-date" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex space-x-3 pt-2">
+        <button onclick="closeFormModal()" class="flex-1 py-2.5 rounded-xl border border-white/10 text-gray-300 text-xs font-semibold hover:bg-white/5 transition">取消</button>
+        <button onclick="submitSegmentForm()" class="flex-1 py-2.5 rounded-xl bg-cyan-500 text-slate-950 text-xs font-bold hover:bg-cyan-400 transition shadow-lg" id="btn-submit-form">確認儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form List Modal -->
+  <div id="modal-list" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
+    <div class="glass-panel w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 border border-white/20">
+      <div class="flex justify-between items-center border-b border-white/10 pb-3">
+        <h3 class="text-base font-bold flex items-center space-x-2 text-amber-300">
+          <i class="fa-solid fa-list-check"></i>
+          <span>管理與修改行程段落</span>
+        </h3>
+        <button onclick="closeFormListModal()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div id="segment-list-container" class="max-h-80 overflow-y-auto custom-scrollbar space-y-2 pr-1 text-xs"></div>
+
+      <div class="flex justify-end pt-2">
+        <button onclick="closeFormListModal()" class="px-5 py-2 rounded-xl bg-slate-800 border border-white/10 text-xs font-semibold hover:bg-slate-700 transition">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let scene, camera, renderer, controls;
+    let globeMesh, vehicleMesh, trajectoryGroup;
+    let pinMeshes = [];
+    let segments = [];
+    let isPlaying = false;
+    let currentProgress = 0;
+    let speedMultiplier = 1;
+    let cameraFollowMode = false;
+
+    let isPausedAtEnd = false;
+    let isLegPaused = false;
+    let lastPassedSegment = 0;
+
+    let mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
+
+    let currentVehicleMode = null;
+
+    const EARTH_RADIUS = 5;
+
+    const LOCATION_DB = {
+      "台北": { lat: 25.047, lon: 121.517 },
+      "台北車站": { lat: 25.047, lon: 121.517 },
+      "基隆": { lat: 25.131, lon: 121.744 },
+      "基隆港": { lat: 25.131, lon: 121.744 },
+      "馬祖南竿": { lat: 26.158, lon: 119.951 },
+      "南竿": { lat: 26.158, lon: 119.951 },
+      "馬祖北竿": { lat: 26.224, lon: 120.003 },
+      "北竿": { lat: 26.224, lon: 120.003 },
+      "白沙": { lat: 26.224, lon: 120.003 },
+      "福州黃岐": { lat: 26.312, lon: 119.865 },
+      "黃岐": { lat: 26.312, lon: 119.865 },
+      "煙臺": { lat: 37.540, lon: 121.390 },
+      "仁川": { lat: 37.456, lon: 126.705 },
+      "釜山": { lat: 35.179, lon: 129.075 },
+      "下關": { lat: 33.957, lon: 130.941 },
+      "東京": { lat: 35.676, lon: 139.650 }
+    };
+
+    function getRandomSurfaceWind() {
+      const dirs = ['東北風', '東風', '東南風', '北風', '西北風', '西南風'];
+      const speed = Math.floor(Math.random() * 18) + 6;
+      const dir = dirs[Math.floor(Math.random() * dirs.length)];
+      return `${dir} ${speed} km/h`;
+    }
+
+    async function create8KPrecisionTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 8192;
+      canvas.height = 4096;
+      const context = canvas.getContext('2d');
+
+      const oceanGrad = context.createLinearGradient(0, 0, 0, canvas.height);
+      oceanGrad.addColorStop(0, '#010610');
+      oceanGrad.addColorStop(0.5, '#04162e');
+      oceanGrad.addColorStop(1, '#010610');
+      context.fillStyle = oceanGrad;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      const projection = d3.geoEquirectangular()
+        .scale(canvas.width / (2 * Math.PI))
+        .translate([canvas.width / 2, canvas.height / 2]);
+
+      const path = d3.geoPath().projection(projection).context(context);
+
+      context.beginPath();
+      path(d3.geoGraticule10());
+      context.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+      context.lineWidth = 2;
+      context.stroke();
+
+      try {
+        const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-50m.json');
+        const world = await res.json();
+        const land = topojson.feature(world, world.objects.land);
+
+        context.beginPath(); path(land);
+        context.fillStyle = '#113324'; context.fill();
+
+        context.strokeStyle = '#34d399';
+        context.lineWidth = 4.0;
+        context.stroke();
+      } catch (e) {
+        try {
+          const resB = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json');
+          const worldB = await resB.json();
+          const landB = topojson.feature(worldB, worldB.objects.land);
+          context.beginPath(); path(landB);
+          context.fillStyle = '#113324'; context.fill();
+          context.strokeStyle = '#34d399'; context.lineWidth = 4.0; context.stroke();
+        } catch (err) {}
+      }
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    async function init3D() {
+      const container = document.getElementById('canvas-container');
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.001, 1000);
+      camera.position.set(0, 0, 15);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.3);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+      dirLight.position.set(5, 3, 5);
+      scene.add(dirLight);
+
+      trajectoryGroup = new THREE.Group();
+      scene.add(trajectoryGroup);
+
+      await createGlobe();
+      window.addEventListener('resize', onWindowResize);
+      loadJourneyFromURL();
+      animate();
+    }
+
+    async function createGlobe() {
+      const geometry = new THREE.SphereGeometry(EARTH_RADIUS, 128, 128);
+      const texture = await create8KPrecisionTexture();
+
+      const material = new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.4,
+        metalness: 0.1
+      });
+
+      globeMesh = new THREE.Mesh(geometry, material);
+      scene.add(globeMesh);
+
+      const atmosGeo = new THREE.SphereGeometry(EARTH_RADIUS * 1.015, 64, 64);
+      const atmosMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.BackSide
+      });
+      scene.add(new THREE.Mesh(atmosGeo, atmosMat));
+    }
+
+    function latLonToVector3(lat, lon, radius = EARTH_RADIUS) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+      return new THREE.Vector3(
+        -(radius * Math.sin(phi) * Math.cos(theta)),
+        radius * Math.cos(phi),
+        radius * Math.sin(phi) * Math.sin(theta)
+      );
+    }
+
+    function toScreenPosition(vector, camera) {
+      const labelVec = vector.clone().multiplyScalar(1.006);
+      const p = labelVec.project(camera);
+      return {
+        x: (p.x + 1) * window.innerWidth / 2,
+        y: (-p.y + 1) * window.innerHeight / 2,
+        visible: p.z < 1
+      };
+    }
+
+    async function resolveCoordinates(query) {
+      const clean = query.trim();
+      if (LOCATION_DB[clean]) return LOCATION_DB[clean];
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(clean)}`);
+        const data = await res.json();
+        if (data && data.length > 0) return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+      } catch (e) {}
+      return { lat: 25.047, lon: 121.517 };
+    }
+
+    // 🎯 鏡頭平滑聚焦於特定路段或地點
+    function focusOnSegment(seg) {
+      if (!seg || !seg.fromCoords) return;
+      const startVec = latLonToVector3(seg.fromCoords.lat, seg.fromCoords.lon, EARTH_RADIUS * 1.002);
+      const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
+      const midVec = startVec.clone().add(endVec).multiplyScalar(0.5);
+      const dist = startVec.distanceTo(endVec);
+
+      const cameraDist = Math.max(EARTH_RADIUS * 1.25, EARTH_RADIUS + Math.max(1.2, dist * 1.1));
+      const targetCamPos = midVec.clone().normalize().multiplyScalar(cameraDist);
+
+      controls.target.copy(midVec);
+      camera.position.copy(targetCamPos);
+      controls.update();
+    }
+
+    // 🛣️ OSRM 道路圖資
+    async function fetchRealRoadRoute(fromCoords, toCoords) {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lon},${fromCoords.lat};${toCoords.lon},${toCoords.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+          const coords = data.routes[0].geometry.coordinates;
+          return coords.map(c => latLonToVector3(c[1], c[0], EARTH_RADIUS * 1.003));
+        }
+      } catch (e) {}
+      return getSurfaceStraightLinePoints(
+        latLonToVector3(fromCoords.lat, fromCoords.lon, EARTH_RADIUS * 1.003),
+        latLonToVector3(toCoords.lat, toCoords.lon, EARTH_RADIUS * 1.003),
+        60
+      );
+    }
+
+    // 🎨 3D 交通工具模型建構 (包含雙節關節火車)
+    function createVehicleMesh(mode) {
+      const group = new THREE.Group();
+
+      if (mode === 'ferry') {
+        const hullGeo = new THREE.ConeGeometry(0.035, 0.11, 4);
+        hullGeo.rotateX(Math.PI / 2);
+        hullGeo.scale(1, 0.4, 1);
+        const hull = new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 }));
+
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.015, 0.07), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+        deck.position.set(0, 0.012, 0);
+
+        const deck2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.012, 0.04), new THREE.MeshStandardMaterial({ color: 0x38bdf8 }));
+        deck2.position.set(0, 0.024, -0.005);
+
+        const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.005, 0.015, 8), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+        chimney.position.set(0, 0.032, -0.015);
+
+        group.add(hull, deck, deck2, chimney);
+
+      } else if (mode === 'plane') {
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.2 }));
+        body.rotation.x = Math.PI / 2;
+
+        const wings = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.003, 0.025), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+        wings.position.set(0, 0, -0.01);
+
+        const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.025, 0.02), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+        tailFin.position.set(0, 0.015, -0.045);
+        tailFin.rotation.x = -Math.PI / 6;
+
+        const engine1 = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.02, 8), new THREE.MeshStandardMaterial({ color: 0x475569 }));
+        engine1.rotation.x = Math.PI / 2;
+        engine1.position.set(0.03, -0.006, -0.008);
+
+        const engine2 = engine1.clone();
+        engine2.position.set(-0.03, -0.006, -0.008);
+
+        group.add(body, wings, tailFin, engine1, engine2);
+
+      } else if (mode === 'car') {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.01, 0.055), new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2 }));
+        body.position.y = 0.006;
+
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.009, 0.028), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1 }));
+        cabin.position.set(0, 0.014, -0.003);
+
+        const wheelGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.004, 12);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+
+        const w1 = new THREE.Mesh(wheelGeo, wheelMat); w1.position.set(0.013, 0.005, 0.016);
+        const w2 = new THREE.Mesh(wheelGeo, wheelMat); w2.position.set(-0.013, 0.005, 0.016);
+        const w3 = new THREE.Mesh(wheelGeo, wheelMat); w3.position.set(0.013, 0.005, -0.016);
+        const w4 = new THREE.Mesh(wheelGeo, wheelMat); w4.position.set(-0.013, 0.005, -0.016);
+
+        group.add(body, cabin, w1, w2, w3, w4);
+
+      } else if (mode === 'bus') {
+        const busBody = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.022, 0.075), new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.3 }));
+        busBody.position.y = 0.012;
+
+        const windowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.029, 0.008, 0.06), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1 }));
+        windowStrip.position.y = 0.015;
+
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(0.027, 0.003, 0.073), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+        roof.position.y = 0.023;
+
+        group.add(busBody, windowStrip, roof);
+
+      } else {
+        // 🚆 火車：雙節關節獨立動態車廂結構
+        const trainMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.5, roughness: 0.2 });
+        const blueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+        const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+
+        // 前車廂
+        const carLead = new THREE.Group();
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.035), trainMat); b1.position.y = 0.009;
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.02, 4), blueMat);
+        nose.rotation.x = Math.PI / 2; nose.rotation.y = Math.PI / 4; nose.position.set(0, 0.008, 0.025); nose.scale.set(1, 0.6, 1);
+        const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.035), blueMat); stripe1.position.y = 0.008;
+        const headLight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.003, 0.002), lightMat); headLight.position.set(0, 0.008, 0.034);
+        carLead.add(b1, nose, stripe1, headLight);
+
+        // 後車廂
+        const carRear = new THREE.Group();
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.035), trainMat); b2.position.y = 0.009;
+        const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.035), blueMat); stripe2.position.y = 0.008;
+        carRear.add(b2, stripe2);
+
+        // 連結勾
+        const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.006, 0.01), darkMat);
+        coupler.position.y = 0.008;
+
+        group.add(carLead, carRear, coupler);
+        group.userData = { isTrain: true, carLead, carRear, coupler };
+      }
+
+      return group;
+    }
+
+    function getSurfaceStraightLinePoints(startVec, endVec, numPoints = 60, radius = EARTH_RADIUS * 1.002) {
+      const points = [];
+      for (let i = 0; i <= numPoints; i++) {
+        const t = i / numPoints;
+        const p = new THREE.Vector3().lerpVectors(startVec, endVec, t);
+        p.normalize().multiplyScalar(radius);
+        points.push(p);
+      }
+      return points;
+    }
+
+    async function rebuildJourneyPaths() {
+      if (vehicleMesh) {
+        scene.remove(vehicleMesh);
+        vehicleMesh = null;
+      }
+      currentVehicleMode = null;
+      trajectoryGroup.clear();
+      pinMeshes = [];
+
+      document.getElementById('count-segments').innerText = segments.length;
+
+      if (segments.length === 0) {
+        document.getElementById('label-dep').classList.add('hidden');
+        document.getElementById('label-arr').classList.add('hidden');
+        return;
+      }
+
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const startVec = latLonToVector3(seg.fromCoords.lat, seg.fromCoords.lon, EARTH_RADIUS * 1.002);
+        const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
+
+        let points;
+        if (seg.mode === 'plane') {
+          const midVec = startVec.clone().add(endVec).multiplyScalar(0.5);
+          midVec.normalize().multiplyScalar(EARTH_RADIUS * 1.25);
+          const curve = new THREE.QuadraticBezierCurve3(startVec, midVec, endVec);
+          points = curve.getPoints(60);
+        } else if (seg.mode === 'car' || seg.mode === 'bus' || seg.mode === 'train') {
+          points = await fetchRealRoadRoute(seg.fromCoords, seg.toCoords);
+        } else {
+          points = getSurfaceStraightLinePoints(startVec, endVec, 60, EARTH_RADIUS * 1.003);
+        }
+
+        seg.curvePath = new THREE.CatmullRomCurve3(points);
+
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 3 });
+        trajectoryGroup.add(new THREE.Line(lineGeo, lineMat));
+
+        const pinGeo = new THREE.SphereGeometry(0.008, 16, 16);
+        const pinMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+        
+        const pinStart = new THREE.Mesh(pinGeo, pinMat); pinStart.position.copy(startVec);
+        const pinEnd = new THREE.Mesh(pinGeo, pinMat); pinEnd.position.copy(endVec);
+
+        trajectoryGroup.add(pinStart, pinEnd);
+        pinMeshes.push(pinStart, pinEnd);
+      }
+
+      updateVehiclePosition(currentProgress);
+    }
+
+    function updateVehiclePosition(progress) {
+      if (segments.length === 0) return;
+
+      const totalSegments = segments.length;
+      const scaledProgress = progress * totalSegments;
+      const segIndex = Math.min(Math.floor(scaledProgress), totalSegments - 1);
+      const segT = scaledProgress - segIndex;
+
+      const seg = segments[segIndex];
+
+      if (seg.mode !== currentVehicleMode) {
+        if (vehicleMesh) scene.remove(vehicleMesh);
+        vehicleMesh = createVehicleMesh(seg.mode);
+        scene.add(vehicleMesh);
+        currentVehicleMode = seg.mode;
+      }
+
+      const startVec = latLonToVector3(seg.fromCoords.lat, seg.fromCoords.lon, EARTH_RADIUS * 1.002);
+      const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
+      const distance = startVec.distanceTo(endVec);
+
+      let posFront, tangent;
+      if (seg.curvePath) {
+        posFront = seg.curvePath.getPoint(segT);
+        tangent = seg.curvePath.getTangent(segT).normalize();
+      } else {
+        posFront = new THREE.Vector3().lerpVectors(startVec, endVec, segT).normalize().multiplyScalar(EARTH_RADIUS * 1.003);
+        tangent = new THREE.Vector3().subVectors(endVec, startVec).normalize();
+      }
+
+      vehicleMesh.position.copy(posFront);
+
+      // 姿態轉向矩陣
+      const up = posFront.clone().normalize();
+      const right = new THREE.Vector3().crossVectors(up, tangent).normalize();
+      const adjustedTangent = new THREE.Vector3().crossVectors(right, up).normalize();
+
+      const matrix = new THREE.Matrix4();
+      matrix.makeBasis(right, up, adjustedTangent);
+      
+      // ⭐ 轉向平滑化（Quaternion slerp 減少頻繁密集轉向晃動）
+      const targetQuat = new THREE.Quaternion().setFromRotationMatrix(matrix);
+      if (!vehicleMesh.userData.currentQuat) {
+        vehicleMesh.userData.currentQuat = targetQuat.clone();
+      } else {
+        vehicleMesh.userData.currentQuat.slerp(targetQuat, 0.12);
+      }
+      vehicleMesh.quaternion.copy(vehicleMesh.userData.currentQuat);
+
+      // 🚆 雙節火車後車廂真實關節拖曳效果
+      if (vehicleMesh.userData.isTrain && seg.curvePath) {
+        const segTRear = Math.max(0, segT - 0.025);
+        const posRearWorld = seg.curvePath.getPoint(segTRear);
+        
+        // 轉為車頭局部座標
+        const posRearLocal = vehicleMesh.worldToLocal(posRearWorld.clone());
+        const carRear = vehicleMesh.userData.carRear;
+        const coupler = vehicleMesh.userData.coupler;
+
+        carRear.position.copy(posRearLocal);
+        
+        // 後車廂指向前車廂（計算拖曳向量）
+        const dirToFront = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), posRearLocal).normalize();
+        if (dirToFront.lengthSq() > 0.001) {
+          carRear.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirToFront);
+          coupler.position.copy(posRearLocal).multiplyScalar(0.5);
+          coupler.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirToFront);
+        }
+      }
+
+      const vehicleScale = Math.max(0.15, Math.min(1.0, distance * 0.45));
+      vehicleMesh.scale.set(vehicleScale, vehicleScale, vehicleScale);
+
+      document.getElementById('current-leg-title').innerText = `${seg.from} ➔ ${seg.to} (${seg.depDate})`;
+
+      if (cameraFollowMode) {
+        const cameraAltitudeMultiplier = Math.max(1.02, 1.0 + (distance * 0.25));
+        const targetCamPos = posFront.clone().multiplyScalar(cameraAltitudeMultiplier);
+        
+        camera.position.lerp(targetCamPos, 0.1);
+        controls.target.lerp(posFront, 0.1);
+      }
+
+      const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+      const baseScale = Math.min(2.5, Math.max(0.05, (cameraDistance - EARTH_RADIUS) * 0.15));
+      pinMeshes.forEach(pin => {
+        pin.scale.set(baseScale, baseScale, baseScale);
+      });
+
+      const depPosScreen = toScreenPosition(startVec, camera);
+      const arrPosScreen = toScreenPosition(endVec, camera);
+
+      const labelDepEl = document.getElementById('label-dep');
+      const labelArrEl = document.getElementById('label-arr');
+
+      document.getElementById('txt-dep-name').innerText = seg.from;
+      document.getElementById('txt-dep-date').innerText = seg.depDate;
+      document.getElementById('txt-arr-name').innerText = seg.to;
+      document.getElementById('txt-arr-date').innerText = seg.arrDate;
+      
+      if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
+      document.getElementById('txt-arr-wind').innerText = `地面風: ${seg.windInfo}`;
+
+      const topSafeZone = 90;
+
+      if (depPosScreen.visible && depPosScreen.y > topSafeZone && segT < 0.45) {
+        labelDepEl.classList.remove('hidden');
+        labelDepEl.style.left = `${depPosScreen.x}px`;
+        labelDepEl.style.top = `${depPosScreen.y}px`;
+        labelDepEl.style.opacity = `${Math.max(0, 1 - (segT / 0.45))}`;
+      } else {
+        labelDepEl.classList.add('hidden');
+      }
+
+      if (arrPosScreen.visible && arrPosScreen.y > topSafeZone && segT > 0.55) {
+        labelArrEl.classList.remove('hidden');
+        labelArrEl.style.left = `${arrPosScreen.x}px`;
+        labelArrEl.style.top = `${arrPosScreen.y}px`;
+        labelArrEl.style.opacity = `${Math.max(0, (segT - 0.55) / 0.45)}`;
+      } else {
+        labelArrEl.classList.add('hidden');
+      }
+    }
+
+    function shareItinerary() {
+      if (segments.length === 0) {
+        alert("目前尚無行程紀錄，請先新增行程！");
+        return;
+      }
+      const compactSegments = segments.map(s => ({
+        from: s.from, to: s.to, mode: s.mode, depDate: s.depDate, arrDate: s.arrDate, fromCoords: s.fromCoords, toCoords: s.toCoords
+      }));
+      const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(compactSegments)))));
+      const shareUrl = `${window.location.origin}${window.location.pathname}?journey=${encoded}`;
+      
+      navigator.clipboard.writeText(shareUrl).then(() => {
+        alert("🎉 行程分享網址已成功複製到剪貼簿！好友點開網址即可觀看完整動畫與路程資訊。");
+      }).catch(() => {
+        prompt("請手動複製以下行程分享網址：", shareUrl);
+      });
+    }
+
+    async function loadJourneyFromURL() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const journeyData = urlParams.get('journey');
+      if (journeyData) {
+        try {
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(journeyData)))));
+          if (Array.isArray(decoded) && decoded.length > 0) {
+            segments = decoded.map(s => ({ ...s, windInfo: getRandomSurfaceWind() }));
+            await rebuildJourneyPaths();
+            renderSegmentList();
+            focusOnSegment(segments[0]); // 視角自動轉至第一段
+            setTimeout(() => togglePlay(true), 500);
+          }
+        } catch (e) {
+          console.error("解析分享行程失敗", e);
+        }
+      }
+    }
+
+    function toggleRecording() {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    }
+
+    function startRecording() {
+      if (segments.length === 0) {
+        alert("請先新增行程再開始錄影！");
+        return;
+      }
+
+      const canvas = renderer.domElement;
+      const stream = canvas.captureStream(30);
+      recordedChunks = [];
+
+      let options = { mimeType: 'video/webm;codecs=vp9' };
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options = { mimeType: 'video/webm' };
+      }
+
+      try {
+        mediaRecorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        alert("您的瀏覽器暫不支援 Screen Canvas 錄影功能");
+        return;
+      }
+
+      mediaRecorder.ondataavailable = function(e) {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = function() {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `3D_Journey_${new Date().toISOString().slice(0,10)}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        }, 100);
+
+        document.getElementById('rec-badge').classList.add('hidden');
+        document.getElementById('txt-rec-btn').innerText = "錄影整段行程";
+        isRecording = false;
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      document.getElementById('rec-badge').classList.remove('hidden');
+      document.getElementById('txt-rec-btn').innerText = "停止錄影並下載";
+
+      currentProgress = 0;
+      isPausedAtEnd = false;
+      isLegPaused = false;
+      lastPassedSegment = 0;
+      togglePlay(true);
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    }
+
+    function toggleMenu() { document.getElementById('action-menu').classList.toggle('hidden'); }
+    
+    // ⭐ 1. 自動帶入上一段行程之到達地點與日期
+    function openFormModal(editIdx = -1) {
+      document.getElementById('editing-index').value = editIdx;
+      if (editIdx >= 0) {
+        const seg = segments[editIdx];
+        document.getElementById('form-modal-title').innerText = "修改行程記錄";
+        document.getElementById('input-from').value = seg.from;
+        document.getElementById('input-to').value = seg.to;
+        document.getElementById('input-mode').value = seg.mode;
+        document.getElementById('input-dep-date').value = seg.depDate;
+        document.getElementById('input-arr-date').value = seg.arrDate;
+      } else {
+        document.getElementById('form-modal-title').innerText = "新增行程記錄";
+        
+        // 若已有前段行程，自動帶入前段的到達點與到達日期
+        if (segments.length > 0) {
+          const lastSeg = segments[segments.length - 1];
+          document.getElementById('input-from').value = lastSeg.to;
+          document.getElementById('input-to').value = "";
+          document.getElementById('input-dep-date').value = lastSeg.arrDate;
+          document.getElementById('input-arr-date').value = lastSeg.arrDate;
+        } else {
+          const today = new Date().toISOString().split('T')[0];
+          document.getElementById('input-from').value = "";
+          document.getElementById('input-to').value = "";
+          document.getElementById('input-dep-date').value = today;
+          document.getElementById('input-arr-date').value = today;
+        }
+      }
+      document.getElementById('modal-form').classList.remove('hidden');
+    }
+    
+    function closeFormModal() { document.getElementById('modal-form').classList.add('hidden'); }
+    
+    function autoSetArrivalDate() {
+      document.getElementById('input-arr-date').value = document.getElementById('input-dep-date').value;
+    }
+
+    async function submitSegmentForm() {
+      const editIdx = parseInt(document.getElementById('editing-index').value);
+      const from = document.getElementById('input-from').value.trim();
+      const to = document.getElementById('input-to').value.trim();
+      const mode = document.getElementById('input-mode').value;
+      const depDate = document.getElementById('input-dep-date').value;
+      const arrDate = document.getElementById('input-arr-date').value;
+
+      if (!from || !to) { alert("請輸入出發與到達地點"); return; }
+
+      const fromCoords = await resolveCoordinates(from);
+      const toCoords = await resolveCoordinates(to);
+
+      const newSeg = { from, to, mode, depDate, arrDate, fromCoords, toCoords, windInfo: getRandomSurfaceWind() };
+
+      if (editIdx >= 0) {
+        segments[editIdx] = newSeg;
+      } else {
+        segments.push(newSeg);
+      }
+
+      closeFormModal();
+      await rebuildJourneyPaths();
+      renderSegmentList();
+      
+      // ⭐ 2. 設定完成後，鏡頭自動轉到該路段區域
+      focusOnSegment(newSeg);
+      togglePlay(true);
+    }
+
+    function openFormListModal() {
+      renderSegmentList();
+      document.getElementById('modal-list').classList.remove('hidden');
+    }
+
+    function closeFormListModal() {
+      document.getElementById('modal-list').classList.add('hidden');
+    }
+
+    function renderSegmentList() {
+      const container = document.getElementById('segment-list-container');
+      container.innerHTML = "";
+
+      if (segments.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-6">目前尚無行程紀錄，請點擊「新增行程」加入。</p>`;
+        return;
+      }
+
+      const modeIcons = { ferry: '🚢', train: '🚆', car: '🚗', bus: '🚌', plane: '✈️' };
+
+      segments.forEach((seg, idx) => {
+        const item = document.createElement('div');
+        item.className = "flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 border border-white/10 hover:border-cyan-500/40 transition";
+        item.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <span class="text-lg">${modeIcons[seg.mode] || '📍'}</span>
+            <div>
+              <div class="font-bold text-gray-200">${seg.from} ➔ ${seg.to}</div>
+              <div class="text-[10px] text-gray-400 font-mono">${seg.depDate} ${seg.depDate !== seg.arrDate ? ' ~ ' + seg.arrDate : ''}</div>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="editSegment(${idx})" class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500/40 flex items-center justify-center transition" title="編輯">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </button>
+            <button onclick="deleteSegment(${idx})" class="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/40 flex items-center justify-center transition" title="刪除">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function editSegment(idx) {
+      closeFormListModal();
+      openFormModal(idx);
+    }
+
+    async function deleteSegment(idx) {
+      segments.splice(idx, 1);
+      await rebuildJourneyPaths();
+      renderSegmentList();
+    }
+
+    function clearAllSegments() {
+      segments = [];
+      if (vehicleMesh) {
+        scene.remove(vehicleMesh);
+        vehicleMesh = null;
+      }
+      currentVehicleMode = null;
+      trajectoryGroup.clear();
+      document.getElementById('current-leg-title').innerText = "等待輸入行程...";
+      document.getElementById('count-segments').innerText = "0";
+      document.getElementById('label-dep').classList.add('hidden');
+      document.getElementById('label-arr').classList.add('hidden');
+      togglePlay(false);
+    }
+
+    function togglePlay(forceState) {
+      isPlaying = forceState !== undefined ? forceState : !isPlaying;
+      document.getElementById('icon-play').className = isPlaying ? "fa-solid fa-pause text-lg" : "fa-solid fa-play text-lg";
+    }
+
+    function cycleSpeed() {
+      const speeds = [1, 2, 5];
+      speedMultiplier = speeds[(speeds.indexOf(speedMultiplier) + 1) % speeds.length];
+      document.getElementById('btn-speed-text').innerText = `${speedMultiplier}x`;
+      document.getElementById('playback-speed-label').innerText = `${speedMultiplier}x`;
+    }
+
+    function seekProgress(val) {
+      isPausedAtEnd = false;
+      isLegPaused = false;
+      currentProgress = val / 100;
+      lastPassedSegment = Math.floor(currentProgress * segments.length);
+      updateVehiclePosition(currentProgress);
+    }
+
+    function toggleCameraFollow() {
+      cameraFollowMode = !cameraFollowMode;
+      document.getElementById('txt-camera-mode').innerText = cameraFollowMode ? "解鎖自由視角" : "跟隨交通工具";
+      document.getElementById('icon-camera-status').className = cameraFollowMode ? "fa-solid fa-toggle-on text-sm text-cyan-400" : "fa-solid fa-toggle-off text-sm text-gray-400";
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (isPlaying && segments.length > 0) {
+        if (!isPausedAtEnd && !isLegPaused) {
+          currentProgress += 0.0008 * speedMultiplier;
+
+          const totalSegments = segments.length;
+          const currentSegIdx = Math.floor(currentProgress * totalSegments);
+
+          if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
+            isLegPaused = true;
+            currentProgress = currentSegIdx / totalSegments;
+
+            setTimeout(() => {
+              if (isPlaying) {
+                lastPassedSegment = currentSegIdx;
+                isLegPaused = false;
+              }
+            }, 2500);
+          } 
+          else if (currentProgress >= 1) {
+            currentProgress = 1;
+            isPausedAtEnd = true;
+
+            setTimeout(() => {
+              if (isPlaying) {
+                currentProgress = 0;
+                lastPassedSegment = 0;
+                isPausedAtEnd = false;
+              }
+            }, 3000);
+          }
+        }
+
+        document.getElementById('progress-bar').value = currentProgress * 100;
+        updateVehiclePosition(currentProgress);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.onload = init3D;
+  </script>
+</body>
+</html>
