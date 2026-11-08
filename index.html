@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - WebGL 原生錄影標籤與雙色站點日期對比</title>
+  <title>3D 漫遊旅程動畫 - 停留秒數延長與不同日期底色區隔</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -43,6 +43,14 @@
     .custom-scrollbar::-webkit-scrollbar { width: 5px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.4); border-radius: 3px; }
+    
+    .journey-label {
+      position: absolute;
+      transform: translate(-50%, -115%);
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      z-index: 15;
+    }
   </style>
 </head>
 <body class="text-white select-none">
@@ -54,7 +62,35 @@
   <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-30 hidden pointer-events-none">
     <div class="bg-red-500/90 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-2 shadow-lg animate-pulse">
       <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
-      <span>🔴 行程錄影中 (Recording Labels & Dates...)</span>
+      <span>🔴 錄影中 (Recording...)</span>
+    </div>
+  </div>
+
+  <!-- 3D 浮動資訊標籤容器 -->
+  <div id="label-dep" class="journey-label hidden">
+    <div id="box-dep-panel" class="glass-panel px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-xl flex flex-col items-center">
+      <div class="flex items-center space-x-1.5 text-cyan-300 font-bold text-xs">
+        <i class="fa-solid fa-location-dot"></i>
+        <span id="txt-dep-name">出發地</span>
+      </div>
+      <div class="text-[9px] text-gray-300 font-mono" id="txt-dep-date">2026-11-07</div>
+    </div>
+  </div>
+
+  <div id="label-arr" class="journey-label hidden">
+    <div id="box-arr-panel" class="glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300">
+      <div id="box-arr-header" class="flex items-center space-x-1.5 text-amber-300 font-bold text-xs">
+        <i class="fa-solid fa-flag-checkered"></i>
+        <span id="txt-arr-name">到達地</span>
+      </div>
+      <div id="txt-arr-date-container" class="text-[9px] text-gray-300 font-mono flex items-center space-x-1">
+        <span id="txt-arr-date">2026-11-07</span>
+        <span id="badge-cross-day" class="hidden text-[8px] font-bold px-1.5 py-0.2 rounded bg-rose-500 text-white animate-pulse">跨日</span>
+      </div>
+      <div class="flex items-center space-x-1 text-[9px] text-cyan-300 font-mono pt-0.5 border-t border-white/10 w-full justify-center">
+        <i class="fa-solid fa-wind"></i>
+        <span id="txt-arr-wind">地面風: 東風 23 km/h</span>
+      </div>
     </div>
   </div>
 
@@ -66,7 +102,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">WebGL 錄影日期與雙色站點標籤</p>
+        <p class="text-[10px] text-gray-400">停留秒數延長與跨日不同日期底色區隔</p>
       </div>
     </div>
 
@@ -123,7 +159,7 @@
   <!-- Bottom Playbar Dock -->
   <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-lg glass-panel rounded-3xl p-3 flex items-center justify-between shadow-2xl pointer-events-auto ui-dock">
     <button onclick="togglePlay()" id="btn-play" class="w-12 h-12 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center transition shadow-lg">
-      <i id="icon-play" class="fa-solid fa-pause text-lg"></i>
+      <i id="icon-play" class="fa-solid fa-play text-lg"></i>
     </button>
 
     <div class="flex-1 mx-4">
@@ -156,10 +192,10 @@
         <div>
           <label class="block text-gray-400 mb-1">交通工具</label>
           <select id="input-mode" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
-            <option value="ferry">🚢 渡輪 / 輪船 (Ferry)</option>
-            <option value="car">🚗 汽車 / 自駕 (Car)</option>
-            <option value="bus">🚌 巴士 / 客運 (Bus)</option>
-            <option value="train">🚆 火車 / 新幹線 (Train)</option>
+            <option value="ferry">🚢 渡輪 / 輪船 (Ferry - 橘色船體與甲板)</option>
+            <option value="car">🚗 汽車 / 自駕 (Car - 走公路網)</option>
+            <option value="bus">🚌 巴士 / 客運 (Bus - 走公路網)</option>
+            <option value="train">🚆 火車 / 新幹線 (Train - 關節軟連結過彎)</option>
             <option value="plane">✈️ 飛機 (Airplane)</option>
           </select>
         </div>
@@ -221,7 +257,7 @@
     let isPlaying = false;
     let currentProgress = 0;
     let speedMultiplier = 1;
-    let cameraFollowMode = true;
+    let cameraFollowMode = true; // 預設開啟追蹤攝影模式
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
@@ -232,7 +268,6 @@
     let isRecording = false;
 
     let currentVehicleMode = null;
-    let depSprite = null, arrSprite = null;
 
     const EARTH_RADIUS = 5;
 
@@ -260,88 +295,6 @@
       const speed = Math.floor(Math.random() * 18) + 6;
       const dir = dirs[Math.floor(Math.random() * dirs.length)];
       return `${dir} ${speed} km/h`;
-    }
-
-    // 🎨 動態繪製 WebGL 原生 Sprite 標籤 Texture (可直接被錄影擷取)
-    function createWebGLSpriteTexture(options) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-
-      const isArrival = options.type === 'arr';
-      const isCrossDay = options.isCrossDay || false;
-      const titleText = options.title || (isArrival ? "🏁 到達地" : "🚀 出發地");
-      const nameText = options.name || "";
-      const dateText = options.date || "";
-      const subText = options.wind || "";
-
-      // 背景卡片（根據出發/同日到達/跨日到達設計獨立雙色）
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-      ctx.beginPath();
-      ctx.roundRect(16, 16, 480, 224, 28);
-      ctx.fill();
-
-      // 邊框與色彩識別
-      if (!isArrival) {
-        // 出發卡片：螢光青藍色
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText(titleText, 40, 65);
-      } else if (isCrossDay) {
-        // 跨日到達卡片：紅羅蘭/玫瑰紫漸層
-        const grad = ctx.createLinearGradient(0, 0, 512, 256);
-        grad.addColorStop(0, '#581c87');
-        grad.addColorStop(1, '#9f1239');
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        ctx.strokeStyle = '#f43f5e';
-        ctx.lineWidth = 8;
-        ctx.stroke();
-
-        ctx.fillStyle = '#fda4af';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText("🏁 跨日到達", 40, 65);
-
-        // 跨日醒目徽章
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath(); ctx.roundRect(360, 35, 100, 40, 10); ctx.fill();
-        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px sans-serif';
-        ctx.fillText("跨日", 388, 63);
-      } else {
-        // 標準到達卡片：琥珀金色
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        ctx.fillStyle = '#fbbf24';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText(titleText, 40, 65);
-      }
-
-      // 地點名稱
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 38px sans-serif';
-      ctx.fillText(nameText, 40, 120);
-
-      // 日期資訊
-      ctx.fillStyle = isArrival && isCrossDay ? '#fecdd3' : '#cbd5e1';
-      ctx.font = 'bold 28px monospace';
-      ctx.fillText(`📅 ${dateText}`, 40, 165);
-
-      // 地面風速 (到達站點獨有)
-      if (subText) {
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = '22px monospace';
-        ctx.fillText(`💨 ${subText}`, 40, 205);
-      }
-
-      return new THREE.CanvasTexture(canvas);
     }
 
     async function create8KPrecisionTexture() {
@@ -423,14 +376,6 @@
       trajectoryGroup = new THREE.Group();
       scene.add(trajectoryGroup);
 
-      // WebGL 標籤 Sprite 容器
-      depSprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
-      arrSprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
-      depSprite.renderOrder = 999;
-      arrSprite.renderOrder = 999;
-      scene.add(depSprite);
-      scene.add(arrSprite);
-
       await createGlobe();
 
       window.addEventListener('resize', onWindowResize);
@@ -475,6 +420,19 @@
         radius * Math.cos(phi),
         radius * Math.sin(phi) * Math.sin(theta)
       );
+    }
+
+    function toScreenPosition(vector, camera) {
+      const labelVec = vector.clone().multiplyScalar(1.006);
+      const p = labelVec.project(camera);
+      const container = document.getElementById('canvas-container');
+      const w = container ? container.clientWidth : window.innerWidth;
+      const h = container ? container.clientHeight : window.innerHeight;
+      return {
+        x: (p.x + 1) * w / 2,
+        y: (-p.y + 1) * h / 2,
+        visible: p.z < 1
+      };
     }
 
     async function resolveCoordinates(query) {
@@ -670,8 +628,8 @@
       document.getElementById('count-segments').innerText = segments.length;
 
       if (segments.length === 0) {
-        depSprite.visible = false;
-        arrSprite.visible = false;
+        document.getElementById('label-dep').classList.add('hidden');
+        document.getElementById('label-arr').classList.add('hidden');
         return;
       }
 
@@ -732,11 +690,9 @@
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
 
-      // 🔍 長路程載具動態加大顯示
       const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const camAlt = Math.max(0.2, cameraDistance - EARTH_RADIUS);
-      const distanceScaleFactor = 1.0 + Math.min(1.8, distance * 0.7);
-      const vehicleScale = Math.max(0.08, Math.min(2.5, camAlt * 0.22 * distanceScaleFactor));
+      const vehicleScale = Math.max(0.08, Math.min(1.35, camAlt * 0.22));
 
       if (vehicleMesh.userData.isTrain) {
         vehicleMesh.position.set(0, 0, 0);
@@ -833,44 +789,57 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
+      const depPosScreen = toScreenPosition(startVec, camera);
+      const arrPosScreen = toScreenPosition(endVec, camera);
+
+      const labelDepEl = document.getElementById('label-dep');
+      const labelArrEl = document.getElementById('label-arr');
+
+      document.getElementById('txt-dep-name').innerText = seg.from;
+      document.getElementById('txt-dep-date').innerText = seg.depDate;
+      document.getElementById('txt-arr-name').innerText = seg.to;
+      document.getElementById('txt-arr-date').innerText = seg.arrDate;
+      
       if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
+      document.getElementById('txt-arr-wind').innerText = `地面風: ${seg.windInfo}`;
 
-      // 🎬 WEBGL 原生 3D SPRITE 標籤更新 (影片錄影時 100% 寫入 Video Canvas)
+      // 🎨 日期相同 vs 跨日不同日期 底色與視覺樣式動態切換
       const isCrossDay = (seg.depDate !== seg.arrDate);
-      const spriteScale = Math.max(0.6, Math.min(1.8, (cameraDistance - EARTH_RADIUS) * 0.22));
+      const arrPanel = document.getElementById('box-arr-panel');
+      const arrHeader = document.getElementById('box-arr-header');
+      const crossDayBadge = document.getElementById('badge-cross-day');
 
-      // 1. 出發地點標籤 (青藍色卡片)
-      if (segT < 0.6) {
-        depSprite.visible = true;
-        depSprite.material.map = createWebGLSpriteTexture({
-          type: 'dep',
-          title: '🚀 出發地',
-          name: seg.from,
-          date: seg.depDate
-        });
-        depSprite.position.copy(startVec.clone().multiplyScalar(1.08));
-        depSprite.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-        depSprite.material.opacity = Math.max(0, 1 - (segT / 0.6));
+      if (isCrossDay) {
+        // 跨日行程（不同出發與到達日期）：改用醒目的深紫與紅羅蘭雙色漸層底色 + 紅色跨日徽章
+        arrPanel.className = "glass-panel px-3 py-2 rounded-xl border border-rose-500/70 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300 !bg-gradient-to-tr !from-purple-950/90 !to-rose-900/90";
+        arrHeader.className = "flex items-center space-x-1.5 text-rose-300 font-bold text-xs";
+        crossDayBadge.classList.remove('hidden');
       } else {
-        depSprite.visible = false;
+        // 同日行程（相同出發與到達日期）：標準琥珀金色 style
+        arrPanel.className = "glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300";
+        arrHeader.className = "flex items-center space-x-1.5 text-amber-300 font-bold text-xs";
+        crossDayBadge.classList.add('hidden');
       }
 
-      // 2. 到達地點標籤 (雙色卡片：同日琥珀金 vs 跨日紫色 + 跨日徽章)
-      if (segT > 0.4) {
-        arrSprite.visible = true;
-        arrSprite.material.map = createWebGLSpriteTexture({
-          type: 'arr',
-          title: isCrossDay ? '🏁 跨日到達' : '🏁 到達地',
-          name: seg.to,
-          date: seg.arrDate,
-          wind: `風速: ${seg.windInfo}`,
-          isCrossDay: isCrossDay
-        });
-        arrSprite.position.copy(endVec.clone().multiplyScalar(1.08));
-        arrSprite.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-        arrSprite.material.opacity = Math.max(0, (segT - 0.4) / 0.6);
+      const topSafeZone = 90;
+
+      // ⏱️ 擴大出發與到達標籤在畫面上可見時機（顯示更久）
+      if (depPosScreen.visible && depPosScreen.y > topSafeZone && segT < 0.55) {
+        labelDepEl.classList.remove('hidden');
+        labelDepEl.style.left = `${depPosScreen.x}px`;
+        labelDepEl.style.top = `${depPosScreen.y}px`;
+        labelDepEl.style.opacity = `${Math.max(0, 1 - (segT / 0.55))}`;
       } else {
-        arrSprite.visible = false;
+        labelDepEl.classList.add('hidden');
+      }
+
+      if (arrPosScreen.visible && arrPosScreen.y > topSafeZone && segT > 0.45) {
+        labelArrEl.classList.remove('hidden');
+        labelArrEl.style.left = `${arrPosScreen.x}px`;
+        labelArrEl.style.top = `${arrPosScreen.y}px`;
+        labelArrEl.style.opacity = `${Math.max(0, (segT - 0.45) / 0.55)}`;
+      } else {
+        labelArrEl.classList.add('hidden');
       }
     }
 
@@ -1165,10 +1134,10 @@
       }
       currentVehicleMode = null;
       trajectoryGroup.clear();
-      depSprite.visible = false;
-      arrSprite.visible = false;
       document.getElementById('current-leg-title').innerText = "等待輸入行程...";
       document.getElementById('count-segments').innerText = "0";
+      document.getElementById('label-dep').classList.add('hidden');
+      document.getElementById('label-arr').classList.add('hidden');
       togglePlay(false);
     }
 
@@ -1222,6 +1191,7 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
+          // ⏱️ 站點與站點切換停頓時間延長至 4.5 秒（4500ms），讓使用者觀看地點與日期
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
             currentProgress = currentSegIdx / totalSegments;
@@ -1233,13 +1203,10 @@
               }
             }, 4500);
           } 
+          // ⏱️ 終點停頓時間延長至 5 秒（5000ms）
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
-
-            if (isRecording) {
-              stopRecording();
-            }
 
             setTimeout(() => {
               if (isPlaying) {
