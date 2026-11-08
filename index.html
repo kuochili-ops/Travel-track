@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 中轉站 2 秒日期切換與原生 WebGL 全程自動錄影存檔</title>
+  <title>3D 漫遊旅程動畫 - 修正路程標籤顯示與全程自動錄影存檔</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -66,7 +66,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">中轉站 2 秒日期切換與全程自動錄影存檔</p>
+        <p class="text-[10px] text-gray-400">修正標籤顯示與全程自動錄影存檔</p>
       </div>
     </div>
 
@@ -225,7 +225,7 @@
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
-    let isStationTransition = false; // 中轉站先顯示抵達、2秒後顯示出發之狀態標記
+    let isStationTransition = false;
     let lastPassedSegment = 0;
 
     let mediaRecorder;
@@ -262,7 +262,6 @@
       return `${dir} ${speed} km/h`;
     }
 
-    // 🎨 同步繪製 WebGL 原生 3D Canvas 貼圖（確保完整被錄影抓取）
     function createWebGLSpriteTextureSync(options) {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -688,11 +687,11 @@
         trajectoryGroup.add(pinStart, pinEnd);
         pinMeshes.push(pinStart, pinEnd);
 
-        // 🏷️ 預建構 3D 原生標籤 Sprite (100% 寫入影片)
+        // 🏷️ 預創建 3D Sprite 標籤（預設為隱藏，避免堆疊在畫面左側）
         if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
         const isCrossDay = (seg.depDate !== seg.arrDate);
 
-        // 1. 出發標籤 Sprite
+        // 1. 出發標籤
         const depTex = createWebGLSpriteTextureSync({
           type: 'dep',
           title: '🚀 出發地點',
@@ -702,10 +701,11 @@
         const depMat = new THREE.SpriteMaterial({ map: depTex, transparent: true, depthTest: false });
         seg.depSpriteObj = new THREE.Sprite(depMat);
         seg.depSpriteObj.position.copy(startVec.clone().multiplyScalar(1.08));
+        seg.depSpriteObj.visible = false;
         seg.depSpriteObj.renderOrder = 999;
         trajectoryGroup.add(seg.depSpriteObj);
 
-        // 2. 到達標籤 Sprite
+        // 2. 到達標籤
         const arrTex = createWebGLSpriteTextureSync({
           type: 'arr',
           title: isCrossDay ? '🏁 跨日到達' : '🏁 到達地點',
@@ -717,6 +717,7 @@
         const arrMat = new THREE.SpriteMaterial({ map: arrTex, transparent: true, depthTest: false });
         seg.arrSpriteObj = new THREE.Sprite(arrMat);
         seg.arrSpriteObj.position.copy(endVec.clone().multiplyScalar(1.08));
+        seg.arrSpriteObj.visible = false;
         seg.arrSpriteObj.renderOrder = 999;
         trajectoryGroup.add(seg.arrSpriteObj);
       }
@@ -745,7 +746,6 @@
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
 
-      // 🔍 長路程載具比例加大算式
       const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const camAlt = Math.max(0.2, cameraDistance - EARTH_RADIUS);
       const distanceScaleFactor = 1.0 + Math.min(1.8, distance * 0.7);
@@ -846,20 +846,20 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 3D 標籤切換與動態顯隱機制 (含中轉站 2 秒切換處理)
+      // 🎬 精確控制目前段落標籤之動態顯隱與縮放
       const spriteScale = Math.max(0.6, Math.min(1.8, (cameraDistance - EARTH_RADIUS) * 0.22));
 
       segments.forEach((s, idx) => {
         if (s.depSpriteObj && s.arrSpriteObj) {
           if (idx === segIndex) {
             if (isStationTransition) {
-              // ⏱️ 中轉站前 2 秒：只顯示前一段抵達標籤，隱藏後一段出發標籤
+              // ⏱️ 中轉站停靠階段（前 2 秒先顯示抵達地點資訊）
               s.depSpriteObj.visible = false;
               s.arrSpriteObj.visible = true;
               s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
               s.arrSpriteObj.material.opacity = 1.0;
             } else {
-              // 移動過程中的動態漸變顯隱
+              // 行駛階段：前半段淡出出發標籤，後半段淡入到達標籤
               if (segT < 0.5) {
                 s.depSpriteObj.visible = true;
                 s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
@@ -868,7 +868,7 @@
                 s.depSpriteObj.visible = false;
               }
 
-              if (segT > 0.5) {
+              if (segT >= 0.5) {
                 s.arrSpriteObj.visible = true;
                 s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
                 s.arrSpriteObj.material.opacity = Math.max(0, (segT - 0.5) / 0.5);
@@ -877,6 +877,7 @@
               }
             }
           } else {
+            // 非當前行程段落強制隱藏
             s.depSpriteObj.visible = false;
             s.arrSpriteObj.visible = false;
           }
@@ -967,7 +968,6 @@
       }
     }
 
-    // 📹 開始自動錄影全流程
     function startRecording() {
       if (!segments || segments.length === 0) {
         alert("⚠️ 請先新增行程記錄後再開始錄影！");
@@ -1010,7 +1010,6 @@
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
 
-      // 🎬 播放結束自動下載檔案
       mediaRecorder.onstop = function() {
         if (recordedChunks.length === 0) return;
         const mimeType = options.mimeType || 'video/webm';
@@ -1022,7 +1021,7 @@
         a.href = url;
         a.download = `3D_Journey_${new Date().toISOString().slice(0,10)}.${ext}`;
         document.body.appendChild(a);
-        a.click(); // 自動觸發下載
+        a.click();
 
         setTimeout(() => {
           document.body.removeChild(a);
@@ -1255,20 +1254,18 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
-          // 🛑 到達中轉站停靠與 2 秒標籤切換邏輯
+          // 🛑 中轉站停靠邏輯：前 2 秒顯示到達，2 秒後顯示下一段出發
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
-            isStationTransition = true; // 開啟階段 1：顯示抵達標籤
+            isStationTransition = true;
             currentProgress = currentSegIdx / totalSegments;
 
-            // ⏱️ 2 秒過後：切換為顯示下一段的出發地點標籤與日期
             setTimeout(() => {
               if (isPlaying) {
                 isStationTransition = false;
               }
             }, 2000);
 
-            // ⏱️ 4.5 秒過後：繼續出發前往下一站
             setTimeout(() => {
               if (isPlaying) {
                 lastPassedSegment = currentSegIdx;
@@ -1281,7 +1278,6 @@
             currentProgress = 1;
             isPausedAtEnd = true;
 
-            // 自動觸發停止錄影與下載存檔
             if (isRecording) {
               stopRecording();
             }
