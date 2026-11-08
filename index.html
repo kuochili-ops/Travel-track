@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 修正路程標籤顯示與全程自動錄影存檔</title>
+  <title>3D 漫遊旅程動畫 - 修正介面遮蔽與標籤相容性</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -51,10 +51,10 @@
   <div id="canvas-container"></div>
 
   <!-- 🔴 錄影中狀態標籤 -->
-  <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-30 hidden pointer-events-none">
+  <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-[70] hidden pointer-events-none">
     <div class="bg-red-500/90 text-white px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center space-x-2 shadow-lg animate-pulse">
       <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
-      <span>🔴 行程全程自動錄影中 (含地點與日期標籤...)</span>
+      <span>🔴 行程全程自動錄影中...</span>
     </div>
   </div>
 
@@ -66,7 +66,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">修正標籤顯示與全程自動錄影存檔</p>
+        <p class="text-[10px] text-gray-400">修正介面遮蔽與標籤相容性</p>
       </div>
     </div>
 
@@ -78,8 +78,8 @@
     </div>
   </div>
 
-  <!-- Action Menu -->
-  <div id="action-menu" class="fixed top-16 right-4 z-50 flex-col space-y-2 hidden pointer-events-auto w-64">
+  <!-- Action Menu (已將 Z-index 調整為合適層級) -->
+  <div id="action-menu" class="fixed top-16 right-4 z-40 flex-col space-y-2 hidden pointer-events-auto w-64">
     <button onclick="openFormModal()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-cyan-300 hover:bg-cyan-500/20 transition shadow-lg">
       <span class="flex items-center space-x-2">
         <i class="fa-solid fa-plus text-sm"></i>
@@ -139,8 +139,8 @@
     </button>
   </div>
 
-  <!-- Form Modal -->
-  <div id="modal-form" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
+  <!-- Form Modal (提升層級至 z-[60] 確保蓋過所有元素) -->
+  <div id="modal-form" class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
     <div class="glass-panel w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 border border-white/20">
       <div class="flex justify-between items-center border-b border-white/10 pb-3">
         <h3 class="text-base font-bold flex items-center space-x-2 text-cyan-300">
@@ -194,8 +194,8 @@
     </div>
   </div>
 
-  <!-- Form List Modal -->
-  <div id="modal-list" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
+  <!-- Form List Modal (提升層級至 z-[60]) -->
+  <div id="modal-list" class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
     <div class="glass-panel w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 border border-white/20">
       <div class="flex justify-between items-center border-b border-white/10 pb-3">
         <h3 class="text-base font-bold flex items-center space-x-2 text-amber-300">
@@ -261,7 +261,17 @@
       return `${dir} ${speed} km/h`;
     }
 
-    // 🎨 同步繪製 WebGL 原生 3D Canvas 貼圖
+    // 🎨 相容性修復：使用原生路徑繪製圓角矩形，取代會報錯的 ctx.roundRect
+    function drawCompatibleRoundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + width, y, x + width, y + height, radius);
+      ctx.arcTo(x + width, y + height, x, y + height, radius);
+      ctx.arcTo(x, y + height, x, y, radius);
+      ctx.arcTo(x, y, x + width, y, radius);
+      ctx.closePath();
+    }
+
     function createWebGLSpriteTextureSync(options) {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -276,8 +286,7 @@
       const subText = options.wind || "";
 
       ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
-      ctx.beginPath();
-      ctx.roundRect(16, 16, 480, 224, 28);
+      drawCompatibleRoundRect(ctx, 16, 16, 480, 224, 28);
       ctx.fill();
 
       if (!isArrival) {
@@ -304,7 +313,8 @@
         ctx.fillText("🏁 跨日到達", 40, 65);
 
         ctx.fillStyle = '#ef4444';
-        ctx.beginPath(); ctx.roundRect(360, 35, 100, 40, 10); ctx.fill();
+        drawCompatibleRoundRect(ctx, 360, 35, 100, 40, 10);
+        ctx.fill();
         ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px sans-serif';
         ctx.fillText("跨日", 388, 63);
       } else {
@@ -846,32 +856,21 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 穩定明確的 3D 標籤卡片動態顯示演算法
+      // 🎬 確保標籤 100% 全程顯示，不閃爍也不淡出
       const spriteScale = Math.max(0.6, Math.min(1.8, (cameraDistance - EARTH_RADIUS) * 0.22));
 
       segments.forEach((s, idx) => {
         if (s.depSpriteObj && s.arrSpriteObj) {
           if (idx === segIndex) {
-            // 目前正在跑的行程
-            if (segT < 0.25) {
-              // 剛出發 / 停靠前半段：顯示出發標籤
-              s.depSpriteObj.visible = true;
-              s.arrSpriteObj.visible = false;
-              s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-              s.depSpriteObj.material.opacity = 1.0;
-            } else if (segT >= 0.75) {
-              // 快到達 / 停靠後半段：顯示到達標籤
-              s.depSpriteObj.visible = false;
-              s.arrSpriteObj.visible = true;
-              s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-              s.arrSpriteObj.material.opacity = 1.0;
-            } else {
-              // 中間長距離巡航淡出，保持畫面簡潔
-              s.depSpriteObj.visible = false;
-              s.arrSpriteObj.visible = false;
-            }
+            // 目前正在跑的行程段落：起點與終點標籤「同時」全亮顯示
+            s.depSpriteObj.visible = true;
+            s.arrSpriteObj.visible = true;
+            s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
+            s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
+            s.depSpriteObj.material.opacity = 1.0;
+            s.arrSpriteObj.material.opacity = 1.0;
           } else {
-            // 非目前行程段落：全部強制隱藏
+            // 非目前行程段落：強制隱藏
             s.depSpriteObj.visible = false;
             s.arrSpriteObj.visible = false;
           }
@@ -1032,7 +1031,7 @@
       document.getElementById('rec-badge').classList.remove('hidden');
       document.getElementById('txt-rec-btn').innerText = "停止錄影並下載";
 
-      toggleMenu();
+      toggleMenu(); // 開始錄影時自動隱藏選單
       currentProgress = 0;
       isPausedAtEnd = false;
       isLegPaused = false;
@@ -1046,9 +1045,12 @@
       }
     }
 
-    function toggleMenu() { document.getElementById('action-menu').classList.toggle('hidden'); }
+    function toggleMenu() { 
+      document.getElementById('action-menu').classList.toggle('hidden'); 
+    }
     
     function openFormModal(editIdx = -1) {
+      document.getElementById('action-menu').classList.add('hidden'); // 打開彈窗時自動隱藏主選單，避免遮蔽
       document.getElementById('editing-index').value = editIdx;
       if (editIdx >= 0) {
         const seg = segments[editIdx];
@@ -1114,6 +1116,7 @@
     }
 
     function openFormListModal() {
+      document.getElementById('action-menu').classList.add('hidden'); // 打開彈窗時自動隱藏主選單，避免遮蔽
       renderSegmentList();
       document.getElementById('modal-list').classList.remove('hidden');
     }
@@ -1246,6 +1249,7 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
+          // 🛑 到達中途站暫停機制（停靠 2.5 秒，並無縫切換雙標籤）
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
             currentProgress = currentSegIdx / totalSegments;
@@ -1255,8 +1259,9 @@
                 lastPassedSegment = currentSegIdx;
                 isLegPaused = false;
               }
-            }, 3000);
+            }, 2500);
           } 
+          // 🏁 播完最後一段行程
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
