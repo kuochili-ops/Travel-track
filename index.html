@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D 漫遊旅程動畫 - 雙節關節拖曳與視角自動聚焦</title>
+  <title>3D 漫遊旅程動畫 - 雙節火車車廂分離連結修復</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -73,7 +73,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">雙節火車關節拖曳與流暢行進</p>
+        <p class="text-[10px] text-gray-400">修復雙節車廂重疊問題</p>
       </div>
     </div>
 
@@ -165,7 +165,7 @@
           <select id="input-mode" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
             <option value="car">🚗 汽車 / 自駕 (Car - 走公路網)</option>
             <option value="bus">🚌 巴士 / 客運 (Bus - 走公路網)</option>
-            <option value="train">🚆 火車 / 新幹線 (Train - 雙節關節連線)</option>
+            <option value="train">🚆 火車 / 新幹線 (Train - 雙節獨立連結)</option>
             <option value="ferry">🚢 渡輪 / 輪船 (Ferry)</option>
             <option value="plane">✈️ 飛機 (Airplane)</option>
           </select>
@@ -404,7 +404,6 @@
       return { lat: 25.047, lon: 121.517 };
     }
 
-    // 🎯 鏡頭平滑聚焦於特定路段或地點
     function focusOnSegment(seg) {
       if (!seg || !seg.fromCoords) return;
       const startVec = latLonToVector3(seg.fromCoords.lat, seg.fromCoords.lon, EARTH_RADIUS * 1.002);
@@ -420,7 +419,6 @@
       controls.update();
     }
 
-    // 🛣️ OSRM 道路圖資
     async function fetchRealRoadRoute(fromCoords, toCoords) {
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${fromCoords.lon},${fromCoords.lat};${toCoords.lon},${toCoords.lat}?overview=full&geometries=geojson`;
@@ -438,7 +436,7 @@
       );
     }
 
-    // 🎨 3D 交通工具模型建構 (包含雙節關節火車)
+    // ⭐ 修正：火車模型設有前後固定的獨立空間座標（絕對不重疊）
     function createVehicleMesh(mode) {
       const group = new THREE.Group();
 
@@ -510,33 +508,34 @@
         group.add(busBody, windowStrip, roof);
 
       } else {
-        // 🚆 火車：雙節關節獨立動態車廂結構
+        // 🚆 火車：雙節車廂（固定前後間距連結，徹底解決重疊問題）
         const trainMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.5, roughness: 0.2 });
         const blueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
         const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
         const lightMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
 
-        // 前車廂
+        // 前車廂 (Carriage 1)
         const carLead = new THREE.Group();
-        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.035), trainMat); b1.position.y = 0.009;
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.032), trainMat); b1.position.y = 0.009;
         const nose = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.02, 4), blueMat);
-        nose.rotation.x = Math.PI / 2; nose.rotation.y = Math.PI / 4; nose.position.set(0, 0.008, 0.025); nose.scale.set(1, 0.6, 1);
-        const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.035), blueMat); stripe1.position.y = 0.008;
-        const headLight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.003, 0.002), lightMat); headLight.position.set(0, 0.008, 0.034);
+        nose.rotation.x = Math.PI / 2; nose.rotation.y = Math.PI / 4; nose.position.set(0, 0.008, 0.023); nose.scale.set(1, 0.6, 1);
+        const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.032), blueMat); stripe1.position.y = 0.008;
+        const headLight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.003, 0.002), lightMat); headLight.position.set(0, 0.008, 0.032);
         carLead.add(b1, nose, stripe1, headLight);
+        carLead.position.set(0, 0, 0.022); // 前車廂前移
 
-        // 後車廂
+        // 後車廂 (Carriage 2)
         const carRear = new THREE.Group();
-        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.035), trainMat); b2.position.y = 0.009;
-        const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.035), blueMat); stripe2.position.y = 0.008;
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.032), trainMat); b2.position.y = 0.009;
+        const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.032), blueMat); stripe2.position.y = 0.008;
         carRear.add(b2, stripe2);
+        carRear.position.set(0, 0, -0.022); // 後車廂後移
 
-        // 連結勾
-        const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.006, 0.01), darkMat);
-        coupler.position.y = 0.008;
+        // 中間連結器 (Coupler)
+        const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.006, 0.012), darkMat);
+        coupler.position.set(0, 0.008, 0); // 中間連結器
 
         group.add(carLead, carRear, coupler);
-        group.userData = { isTrain: true, carLead, carRear, coupler };
       }
 
       return group;
@@ -646,7 +645,7 @@
       const matrix = new THREE.Matrix4();
       matrix.makeBasis(right, up, adjustedTangent);
       
-      // ⭐ 轉向平滑化（Quaternion slerp 減少頻繁密集轉向晃動）
+      // 轉向平滑化（Quaternion slerp 減少頻繁密集轉向晃動）
       const targetQuat = new THREE.Quaternion().setFromRotationMatrix(matrix);
       if (!vehicleMesh.userData.currentQuat) {
         vehicleMesh.userData.currentQuat = targetQuat.clone();
@@ -654,27 +653,6 @@
         vehicleMesh.userData.currentQuat.slerp(targetQuat, 0.12);
       }
       vehicleMesh.quaternion.copy(vehicleMesh.userData.currentQuat);
-
-      // 🚆 雙節火車後車廂真實關節拖曳效果
-      if (vehicleMesh.userData.isTrain && seg.curvePath) {
-        const segTRear = Math.max(0, segT - 0.025);
-        const posRearWorld = seg.curvePath.getPoint(segTRear);
-        
-        // 轉為車頭局部座標
-        const posRearLocal = vehicleMesh.worldToLocal(posRearWorld.clone());
-        const carRear = vehicleMesh.userData.carRear;
-        const coupler = vehicleMesh.userData.coupler;
-
-        carRear.position.copy(posRearLocal);
-        
-        // 後車廂指向前車廂（計算拖曳向量）
-        const dirToFront = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), posRearLocal).normalize();
-        if (dirToFront.lengthSq() > 0.001) {
-          carRear.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirToFront);
-          coupler.position.copy(posRearLocal).multiplyScalar(0.5);
-          coupler.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirToFront);
-        }
-      }
 
       const vehicleScale = Math.max(0.15, Math.min(1.0, distance * 0.45));
       vehicleMesh.scale.set(vehicleScale, vehicleScale, vehicleScale);
@@ -758,7 +736,7 @@
             segments = decoded.map(s => ({ ...s, windInfo: getRandomSurfaceWind() }));
             await rebuildJourneyPaths();
             renderSegmentList();
-            focusOnSegment(segments[0]); // 視角自動轉至第一段
+            focusOnSegment(segments[0]);
             setTimeout(() => togglePlay(true), 500);
           }
         } catch (e) {
@@ -840,7 +818,6 @@
 
     function toggleMenu() { document.getElementById('action-menu').classList.toggle('hidden'); }
     
-    // ⭐ 1. 自動帶入上一段行程之到達地點與日期
     function openFormModal(editIdx = -1) {
       document.getElementById('editing-index').value = editIdx;
       if (editIdx >= 0) {
@@ -854,7 +831,6 @@
       } else {
         document.getElementById('form-modal-title').innerText = "新增行程記錄";
         
-        // 若已有前段行程，自動帶入前段的到達點與到達日期
         if (segments.length > 0) {
           const lastSeg = segments[segments.length - 1];
           document.getElementById('input-from').value = lastSeg.to;
@@ -903,7 +879,6 @@
       await rebuildJourneyPaths();
       renderSegmentList();
       
-      // ⭐ 2. 設定完成後，鏡頭自動轉到該路段區域
       focusOnSegment(newSeg);
       togglePlay(true);
     }
