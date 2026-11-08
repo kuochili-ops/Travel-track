@@ -225,7 +225,6 @@
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
-    let isStationTransition = false;
     let lastPassedSegment = 0;
 
     let mediaRecorder;
@@ -262,6 +261,7 @@
       return `${dir} ${speed} km/h`;
     }
 
+    // 🎨 同步繪製 WebGL 原生 3D Canvas 貼圖
     function createWebGLSpriteTextureSync(options) {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -687,11 +687,11 @@
         trajectoryGroup.add(pinStart, pinEnd);
         pinMeshes.push(pinStart, pinEnd);
 
-        // 🏷️ 預創建 3D Sprite 標籤（預設為隱藏，避免堆疊在畫面左側）
+        // 🏷️ 預創建 3D Sprite 標籤卡片
         if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
         const isCrossDay = (seg.depDate !== seg.arrDate);
 
-        // 1. 出發標籤
+        // 1. 出發標籤 Sprite
         const depTex = createWebGLSpriteTextureSync({
           type: 'dep',
           title: '🚀 出發地點',
@@ -700,12 +700,12 @@
         });
         const depMat = new THREE.SpriteMaterial({ map: depTex, transparent: true, depthTest: false });
         seg.depSpriteObj = new THREE.Sprite(depMat);
-        seg.depSpriteObj.position.copy(startVec.clone().multiplyScalar(1.08));
+        seg.depSpriteObj.position.copy(startVec.clone().multiplyScalar(1.06));
         seg.depSpriteObj.visible = false;
         seg.depSpriteObj.renderOrder = 999;
         trajectoryGroup.add(seg.depSpriteObj);
 
-        // 2. 到達標籤
+        // 2. 到達標籤 Sprite
         const arrTex = createWebGLSpriteTextureSync({
           type: 'arr',
           title: isCrossDay ? '🏁 跨日到達' : '🏁 到達地點',
@@ -716,7 +716,7 @@
         });
         const arrMat = new THREE.SpriteMaterial({ map: arrTex, transparent: true, depthTest: false });
         seg.arrSpriteObj = new THREE.Sprite(arrMat);
-        seg.arrSpriteObj.position.copy(endVec.clone().multiplyScalar(1.08));
+        seg.arrSpriteObj.position.copy(endVec.clone().multiplyScalar(1.06));
         seg.arrSpriteObj.visible = false;
         seg.arrSpriteObj.renderOrder = 999;
         trajectoryGroup.add(seg.arrSpriteObj);
@@ -846,38 +846,32 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 精確控制目前段落標籤之動態顯隱與縮放
+      // 🎬 穩定明確的 3D 標籤卡片動態顯示演算法
       const spriteScale = Math.max(0.6, Math.min(1.8, (cameraDistance - EARTH_RADIUS) * 0.22));
 
       segments.forEach((s, idx) => {
         if (s.depSpriteObj && s.arrSpriteObj) {
           if (idx === segIndex) {
-            if (isStationTransition) {
-              // ⏱️ 中轉站停靠階段（前 2 秒先顯示抵達地點資訊）
+            // 目前正在跑的行程
+            if (segT < 0.25) {
+              // 剛出發 / 停靠前半段：顯示出發標籤
+              s.depSpriteObj.visible = true;
+              s.arrSpriteObj.visible = false;
+              s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
+              s.depSpriteObj.material.opacity = 1.0;
+            } else if (segT >= 0.75) {
+              // 快到達 / 停靠後半段：顯示到達標籤
               s.depSpriteObj.visible = false;
               s.arrSpriteObj.visible = true;
               s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
               s.arrSpriteObj.material.opacity = 1.0;
             } else {
-              // 行駛階段：前半段淡出出發標籤，後半段淡入到達標籤
-              if (segT < 0.5) {
-                s.depSpriteObj.visible = true;
-                s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-                s.depSpriteObj.material.opacity = Math.max(0, 1 - (segT / 0.5));
-              } else {
-                s.depSpriteObj.visible = false;
-              }
-
-              if (segT >= 0.5) {
-                s.arrSpriteObj.visible = true;
-                s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-                s.arrSpriteObj.material.opacity = Math.max(0, (segT - 0.5) / 0.5);
-              } else {
-                s.arrSpriteObj.visible = false;
-              }
+              // 中間長距離巡航淡出，保持畫面簡潔
+              s.depSpriteObj.visible = false;
+              s.arrSpriteObj.visible = false;
             }
           } else {
-            // 非當前行程段落強制隱藏
+            // 非目前行程段落：全部強制隱藏
             s.depSpriteObj.visible = false;
             s.arrSpriteObj.visible = false;
           }
@@ -1042,7 +1036,6 @@
       currentProgress = 0;
       isPausedAtEnd = false;
       isLegPaused = false;
-      isStationTransition = false;
       lastPassedSegment = 0;
       togglePlay(true);
     }
@@ -1218,7 +1211,6 @@
     function seekProgress(val) {
       isPausedAtEnd = false;
       isLegPaused = false;
-      isStationTransition = false;
       currentProgress = val / 100;
       lastPassedSegment = Math.floor(currentProgress * segments.length);
       updateVehiclePosition(currentProgress);
@@ -1254,26 +1246,17 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
-          // 🛑 中轉站停靠邏輯：前 2 秒顯示到達，2 秒後顯示下一段出發
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
-            isStationTransition = true;
             currentProgress = currentSegIdx / totalSegments;
-
-            setTimeout(() => {
-              if (isPlaying) {
-                isStationTransition = false;
-              }
-            }, 2000);
 
             setTimeout(() => {
               if (isPlaying) {
                 lastPassedSegment = currentSegIdx;
                 isLegPaused = false;
               }
-            }, 4500);
+            }, 3000);
           } 
-          // 🏁 播完最後一段行程
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
