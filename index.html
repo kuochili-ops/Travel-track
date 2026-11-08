@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 預設追蹤攝影與遠景載具放大優化</title>
+  <title>3D 漫遊旅程動畫 - 停留秒數延長與不同日期底色區隔</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -48,7 +48,7 @@
       position: absolute;
       transform: translate(-50%, -115%);
       pointer-events: none;
-      transition: opacity 0.25s ease, transform 0.25s ease;
+      transition: opacity 0.3s ease, transform 0.3s ease;
       z-index: 15;
     }
   </style>
@@ -68,7 +68,7 @@
 
   <!-- 3D 浮動資訊標籤容器 -->
   <div id="label-dep" class="journey-label hidden">
-    <div class="glass-panel px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-xl flex flex-col items-center">
+    <div id="box-dep-panel" class="glass-panel px-3 py-1.5 rounded-xl border border-cyan-500/40 shadow-xl flex flex-col items-center">
       <div class="flex items-center space-x-1.5 text-cyan-300 font-bold text-xs">
         <i class="fa-solid fa-location-dot"></i>
         <span id="txt-dep-name">出發地</span>
@@ -78,13 +78,16 @@
   </div>
 
   <div id="label-arr" class="journey-label hidden">
-    <div class="glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5">
-      <div class="flex items-center space-x-1.5 text-amber-300 font-bold text-xs">
+    <div id="box-arr-panel" class="glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300">
+      <div id="box-arr-header" class="flex items-center space-x-1.5 text-amber-300 font-bold text-xs">
         <i class="fa-solid fa-flag-checkered"></i>
         <span id="txt-arr-name">到達地</span>
       </div>
-      <div class="text-[9px] text-gray-300 font-mono" id="txt-arr-date">2026-11-07</div>
-      <div class="flex items-center space-x-1 text-[9px] text-cyan-400 font-mono pt-0.5 border-t border-white/10 w-full justify-center">
+      <div id="txt-arr-date-container" class="text-[9px] text-gray-300 font-mono flex items-center space-x-1">
+        <span id="txt-arr-date">2026-11-07</span>
+        <span id="badge-cross-day" class="hidden text-[8px] font-bold px-1.5 py-0.2 rounded bg-rose-500 text-white animate-pulse">跨日</span>
+      </div>
+      <div class="flex items-center space-x-1 text-[9px] text-cyan-300 font-mono pt-0.5 border-t border-white/10 w-full justify-center">
         <i class="fa-solid fa-wind"></i>
         <span id="txt-arr-wind">地面風: 東風 23 km/h</span>
       </div>
@@ -99,7 +102,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">預設追蹤攝影與遠景載具放大優化</p>
+        <p class="text-[10px] text-gray-400">停留秒數延長與跨日不同日期底色區隔</p>
       </div>
     </div>
 
@@ -254,7 +257,7 @@
     let isPlaying = false;
     let currentProgress = 0;
     let speedMultiplier = 1;
-    let cameraFollowMode = true; // 🎯 預設開啟跟隨交通工具攝影模式
+    let cameraFollowMode = true; // 預設開啟追蹤攝影模式
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
@@ -687,7 +690,6 @@
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
 
-      // 🔍 長距離/高空視角時適度放大載具（放大區間：0.08 ~ 1.35），維持絕佳可視度
       const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const camAlt = Math.max(0.2, cameraDistance - EARTH_RADIUS);
       const vehicleScale = Math.max(0.08, Math.min(1.35, camAlt * 0.22));
@@ -801,22 +803,41 @@
       if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
       document.getElementById('txt-arr-wind').innerText = `地面風: ${seg.windInfo}`;
 
+      // 🎨 日期相同 vs 跨日不同日期 底色與視覺樣式動態切換
+      const isCrossDay = (seg.depDate !== seg.arrDate);
+      const arrPanel = document.getElementById('box-arr-panel');
+      const arrHeader = document.getElementById('box-arr-header');
+      const crossDayBadge = document.getElementById('badge-cross-day');
+
+      if (isCrossDay) {
+        // 跨日行程（不同出發與到達日期）：改用醒目的深紫與紅羅蘭雙色漸層底色 + 紅色跨日徽章
+        arrPanel.className = "glass-panel px-3 py-2 rounded-xl border border-rose-500/70 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300 !bg-gradient-to-tr !from-purple-950/90 !to-rose-900/90";
+        arrHeader.className = "flex items-center space-x-1.5 text-rose-300 font-bold text-xs";
+        crossDayBadge.classList.remove('hidden');
+      } else {
+        // 同日行程（相同出發與到達日期）：標準琥珀金色 style
+        arrPanel.className = "glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300";
+        arrHeader.className = "flex items-center space-x-1.5 text-amber-300 font-bold text-xs";
+        crossDayBadge.classList.add('hidden');
+      }
+
       const topSafeZone = 90;
 
-      if (depPosScreen.visible && depPosScreen.y > topSafeZone && segT < 0.45) {
+      // ⏱️ 擴大出發與到達標籤在畫面上可見時機（顯示更久）
+      if (depPosScreen.visible && depPosScreen.y > topSafeZone && segT < 0.55) {
         labelDepEl.classList.remove('hidden');
         labelDepEl.style.left = `${depPosScreen.x}px`;
         labelDepEl.style.top = `${depPosScreen.y}px`;
-        labelDepEl.style.opacity = `${Math.max(0, 1 - (segT / 0.45))}`;
+        labelDepEl.style.opacity = `${Math.max(0, 1 - (segT / 0.55))}`;
       } else {
         labelDepEl.classList.add('hidden');
       }
 
-      if (arrPosScreen.visible && arrPosScreen.y > topSafeZone && segT > 0.55) {
+      if (arrPosScreen.visible && arrPosScreen.y > topSafeZone && segT > 0.45) {
         labelArrEl.classList.remove('hidden');
         labelArrEl.style.left = `${arrPosScreen.x}px`;
         labelArrEl.style.top = `${arrPosScreen.y}px`;
-        labelArrEl.style.opacity = `${Math.max(0, (segT - 0.55) / 0.45)}`;
+        labelArrEl.style.opacity = `${Math.max(0, (segT - 0.45) / 0.55)}`;
       } else {
         labelArrEl.classList.add('hidden');
       }
@@ -1056,14 +1077,20 @@
       const modeIcons = { ferry: '🚢', train: '🚆', car: '🚗', bus: '🚌', plane: '✈️' };
 
       segments.forEach((seg, idx) => {
+        const isCross = seg.depDate !== seg.arrDate;
         const item = document.createElement('div');
         item.className = "flex items-center justify-between p-3 rounded-2xl bg-slate-900/80 border border-white/10 hover:border-cyan-500/40 transition";
         item.innerHTML = `
           <div class="flex items-center space-x-3">
             <span class="text-lg">${modeIcons[seg.mode] || '📍'}</span>
             <div>
-              <div class="font-bold text-gray-200">${seg.from} ➔ ${seg.to}</div>
-              <div class="text-[10px] text-gray-400 font-mono">${seg.depDate} ${seg.depDate !== seg.arrDate ? ' ~ ' + seg.arrDate : ''}</div>
+              <div class="font-bold text-gray-200 flex items-center space-x-1.5">
+                <span>${seg.from} ➔ ${seg.to}</span>
+                ${isCross ? '<span class="text-[9px] bg-rose-500/80 text-white px-1.5 py-0.2 rounded font-mono">跨日</span>' : ''}
+              </div>
+              <div class="text-[10px] ${isCross ? 'text-rose-300 font-bold' : 'text-gray-400'} font-mono">
+                ${seg.depDate} ${isCross ? ' ➔ ' + seg.arrDate : ''}
+              </div>
             </div>
           </div>
           <div class="flex items-center space-x-2">
@@ -1164,6 +1191,7 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
+          // ⏱️ 站點與站點切換停頓時間延長至 4.5 秒（4500ms），讓使用者觀看地點與日期
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
             currentProgress = currentSegIdx / totalSegments;
@@ -1173,8 +1201,9 @@
                 lastPassedSegment = currentSegIdx;
                 isLegPaused = false;
               }
-            }, 2500);
+            }, 4500);
           } 
+          // ⏱️ 終點停頓時間延長至 5 秒（5000ms）
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
@@ -1185,7 +1214,7 @@
                 lastPassedSegment = 0;
                 isPausedAtEnd = false;
               }
-            }, 3000);
+            }, 5000);
           }
         }
 
