@@ -120,7 +120,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">適中標籤與快抵達顯示模式</p>
+        <p class="text-[10px] text-gray-400">抵達滯留 2 秒與標籤流暢切換</p>
       </div>
     </div>
 
@@ -610,7 +610,6 @@
       return points;
     }
 
-    // 🎨 適當尺寸的 HTML 標籤卡片
     function createHTMLLabelOverlay(seg, idx) {
       const container = document.getElementById('label-overlay-container');
       const isCross = seg.depDate !== seg.arrDate;
@@ -837,7 +836,7 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 核心邏輯：控制「出發標籤」恆亮，「到達標籤」在進度超過 70% (快抵達) 時才顯示
+      // 🎬 標籤動態顯示邏輯（到達滯留 2 秒並無縫銜接下一行程出發）
       segments.forEach((s, idx) => {
         if (s.depCardEl && s.arrCardEl) {
           if (idx === segIndex) {
@@ -851,12 +850,12 @@
             const isDepFront = depCamDist < camCenterDist;
             const isArrFront = arrCamDist < camCenterDist;
 
-            // 1. 出發標籤：只要在正面就顯示
+            // 出發標籤：前半段顯示
             s.depCardEl.style.display = isDepFront ? 'flex' : 'none';
             s.depCardEl.style.left = `${depPos.x}px`;
             s.depCardEl.style.top = `${depPos.y}px`;
 
-            // 2. 到達標籤：行駛進度 segT >= 0.70 且在正面時才顯示
+            // 到達標籤：快抵達（segT >= 0.70）時顯示
             const isNearDestination = segT >= 0.70;
             s.arrCardEl.style.display = (isArrFront && isNearDestination) ? 'flex' : 'none';
             s.arrCardEl.style.left = `${arrPos.x}px`;
@@ -1139,6 +1138,7 @@
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     }
 
+    // ⏱️ 動態主循環（抵達後滯留 2 秒，自動切換至下一行程出發）
     function animate() {
       requestAnimationFrame(animate);
 
@@ -1149,16 +1149,17 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
+          // 當跨越到下一個行程段落時，觸發「到達滯留 2 秒」
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
-            currentProgress = currentSegIdx / totalSegments;
+            currentProgress = currentSegIdx / totalSegments; // 停在當前行程終點
 
             setTimeout(() => {
               if (isPlaying) {
                 lastPassedSegment = currentSegIdx;
-                isLegPaused = false;
+                isLegPaused = false; // 2 秒後解除暫停，開始下一段出發
               }
-            }, 2500);
+            }, 2000); // ⏱️ 停留 2 秒
           } 
           else if (currentProgress >= 1) {
             currentProgress = 1;
