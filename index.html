@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 停留秒數延長與不同日期底色區隔</title>
+  <title>3D 漫遊旅程動畫 - 全程自動錄影與長路程載具放大</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -62,7 +62,7 @@
   <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-30 hidden pointer-events-none">
     <div class="bg-red-500/90 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center space-x-2 shadow-lg animate-pulse">
       <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
-      <span>🔴 錄影中 (Recording...)</span>
+      <span>🔴 行程錄影中 (Recording...)</span>
     </div>
   </div>
 
@@ -102,7 +102,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">停留秒數延長與跨日不同日期底色區隔</p>
+        <p class="text-[10px] text-gray-400">全程自動錄影與長路程載具放大</p>
       </div>
     </div>
 
@@ -257,7 +257,7 @@
     let isPlaying = false;
     let currentProgress = 0;
     let speedMultiplier = 1;
-    let cameraFollowMode = true; // 預設開啟追蹤攝影模式
+    let cameraFollowMode = true;
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
@@ -690,9 +690,11 @@
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
 
+      // 🔍 針對長路程（distance 較大）動態加大載具顯示比例
       const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const camAlt = Math.max(0.2, cameraDistance - EARTH_RADIUS);
-      const vehicleScale = Math.max(0.08, Math.min(1.35, camAlt * 0.22));
+      const distanceScaleFactor = 1.0 + Math.min(1.8, distance * 0.7); // 長度加成
+      const vehicleScale = Math.max(0.08, Math.min(2.5, camAlt * 0.22 * distanceScaleFactor));
 
       if (vehicleMesh.userData.isTrain) {
         vehicleMesh.position.set(0, 0, 0);
@@ -803,19 +805,16 @@
       if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
       document.getElementById('txt-arr-wind').innerText = `地面風: ${seg.windInfo}`;
 
-      // 🎨 日期相同 vs 跨日不同日期 底色與視覺樣式動態切換
       const isCrossDay = (seg.depDate !== seg.arrDate);
       const arrPanel = document.getElementById('box-arr-panel');
       const arrHeader = document.getElementById('box-arr-header');
       const crossDayBadge = document.getElementById('badge-cross-day');
 
       if (isCrossDay) {
-        // 跨日行程（不同出發與到達日期）：改用醒目的深紫與紅羅蘭雙色漸層底色 + 紅色跨日徽章
         arrPanel.className = "glass-panel px-3 py-2 rounded-xl border border-rose-500/70 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300 !bg-gradient-to-tr !from-purple-950/90 !to-rose-900/90";
         arrHeader.className = "flex items-center space-x-1.5 text-rose-300 font-bold text-xs";
         crossDayBadge.classList.remove('hidden');
       } else {
-        // 同日行程（相同出發與到達日期）：標準琥珀金色 style
         arrPanel.className = "glass-panel px-3 py-2 rounded-xl border border-amber-500/40 shadow-xl flex flex-col items-center space-y-0.5 transition-all duration-300";
         arrHeader.className = "flex items-center space-x-1.5 text-amber-300 font-bold text-xs";
         crossDayBadge.classList.add('hidden');
@@ -823,7 +822,6 @@
 
       const topSafeZone = 90;
 
-      // ⏱️ 擴大出發與到達標籤在畫面上可見時機（顯示更久）
       if (depPosScreen.visible && depPosScreen.y > topSafeZone && segT < 0.55) {
         labelDepEl.classList.remove('hidden');
         labelDepEl.style.left = `${depPosScreen.x}px`;
@@ -926,6 +924,7 @@
       }
     }
 
+    // 📹 觸發錄影：自動從第一段路程開頭開始播放並錄影
     function startRecording() {
       if (segments.length === 0) {
         alert("請先新增行程再開始錄影！");
@@ -976,6 +975,7 @@
       document.getElementById('rec-badge').classList.remove('hidden');
       document.getElementById('txt-rec-btn').innerText = "停止錄影並下載";
 
+      // 重置為第一段路程開頭並播放
       currentProgress = 0;
       isPausedAtEnd = false;
       isLegPaused = false;
@@ -1191,7 +1191,6 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
-          // ⏱️ 站點與站點切換停頓時間延長至 4.5 秒（4500ms），讓使用者觀看地點與日期
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
             currentProgress = currentSegIdx / totalSegments;
@@ -1203,10 +1202,14 @@
               }
             }, 4500);
           } 
-          // ⏱️ 終點停頓時間延長至 5 秒（5000ms）
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
+
+            // 🎬 最後一段行程播放結束，若處於錄影狀態，自動結束錄影並發送存檔下載
+            if (isRecording) {
+              stopRecording();
+            }
 
             setTimeout(() => {
               if (isPlaying) {
