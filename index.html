@@ -2,8 +2,8 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D 漫遊旅程動畫 - 火車靈活關節軟連結過彎</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>3D 漫遊旅程動畫 - 交通工具放大與動態視角隨動縮放</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -13,6 +13,9 @@
   <style>
     body { margin: 0; overflow: hidden; background-color: #030712; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+    
+    /* UI 控制面板固定不隨 3D 視角縮放 */
+    .ui-dock { position: fixed; z-index: 20; pointer-events: auto; transform: translateZ(0); }
     .glass-panel { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); }
     .custom-scrollbar::-webkit-scrollbar { width: 5px; }
     .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
@@ -60,7 +63,7 @@
       <div class="text-[9px] text-gray-300 font-mono" id="txt-arr-date">2026-11-07</div>
       <div class="flex items-center space-x-1 text-[9px] text-cyan-400 font-mono pt-0.5 border-t border-white/10 w-full justify-center">
         <i class="fa-solid fa-wind"></i>
-        <span id="txt-arr-wind">地面風: 東北風 14 km/h</span>
+        <span id="txt-arr-wind">地面風: 東風 23 km/h</span>
       </div>
     </div>
   </div>
@@ -73,7 +76,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">火車靈活關節軟連結過彎</p>
+        <p class="text-[10px] text-gray-400">交通工具放大與動態視角隨動縮放</p>
       </div>
     </div>
 
@@ -127,8 +130,8 @@
     </button>
   </div>
 
-  <!-- Bottom Playbar Dock -->
-  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-lg glass-panel rounded-3xl p-3 flex items-center justify-between shadow-2xl pointer-events-auto">
+  <!-- Bottom Playbar Dock (固化在螢幕底端不縮放) -->
+  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-lg glass-panel rounded-3xl p-3 flex items-center justify-between shadow-2xl pointer-events-auto ui-dock">
     <button onclick="togglePlay()" id="btn-play" class="w-12 h-12 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center transition shadow-lg">
       <i id="icon-play" class="fa-solid fa-play text-lg"></i>
     </button>
@@ -163,10 +166,10 @@
         <div>
           <label class="block text-gray-400 mb-1">交通工具</label>
           <select id="input-mode" class="w-full bg-slate-900/90 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-cyan-400 outline-none">
+            <option value="ferry">🚢 渡輪 / 輪船 (Ferry - 橘色船體與甲板)</option>
             <option value="car">🚗 汽車 / 自駕 (Car - 走公路網)</option>
             <option value="bus">🚌 巴士 / 客運 (Bus - 走公路網)</option>
-            <option value="train">🚆 火車 / 新幹線 (Train - 關節動態過彎折角)</option>
-            <option value="ferry">🚢 渡輪 / 輪船 (Ferry)</option>
+            <option value="train">🚆 火車 / 新幹線 (Train - 關節軟連結過彎)</option>
             <option value="plane">✈️ 飛機 (Airplane)</option>
           </select>
         </div>
@@ -411,7 +414,13 @@
       const midVec = startVec.clone().add(endVec).multiplyScalar(0.5);
       const dist = startVec.distanceTo(endVec);
 
-      const cameraDist = Math.max(EARTH_RADIUS * 1.25, EARTH_RADIUS + Math.max(1.2, dist * 1.1));
+      let cameraDist;
+      if (dist < 1.8) {
+        cameraDist = EARTH_RADIUS + Math.max(0.45, dist * 1.2);
+      } else {
+        cameraDist = EARTH_RADIUS + Math.max(2.2, dist * 1.15);
+      }
+
       const targetCamPos = midVec.clone().normalize().multiplyScalar(cameraDist);
 
       controls.target.copy(midVec);
@@ -436,7 +445,6 @@
       );
     }
 
-    // 🧮 根據 3D 位置與切線向量計算球面四元數旋轉
     function getRotationQuaternion(pos, tangent) {
       const up = pos.clone().normalize();
       const right = new THREE.Vector3().crossVectors(up, tangent).normalize();
@@ -445,102 +453,111 @@
       return new THREE.Quaternion().setFromRotationMatrix(m);
     }
 
-    // 🎨 模型建構 (包含靈活關節火車車廂)
     function createVehicleMesh(mode) {
       const group = new THREE.Group();
 
       if (mode === 'ferry') {
-        const hullGeo = new THREE.ConeGeometry(0.035, 0.11, 4);
-        hullGeo.rotateX(Math.PI / 2);
-        hullGeo.scale(1, 0.4, 1);
-        const hull = new THREE.Mesh(hullGeo, new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 }));
+        const hullGeo = new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+        hullGeo.scale(0.038, 0.024, 0.085);
+        const orangeMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.3 });
+        const hull = new THREE.Mesh(hullGeo, orangeMat);
 
-        const deck = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.015, 0.07), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
-        deck.position.set(0, 0.012, 0);
+        const deckGeo = new THREE.CylinderGeometry(0.036, 0.036, 0.003, 32);
+        deckGeo.scale(1, 1, 2.3);
+        const deck = new THREE.Mesh(deckGeo, orangeMat);
+        deck.position.set(0, 0, 0);
 
-        const deck2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.012, 0.04), new THREE.MeshStandardMaterial({ color: 0x38bdf8 }));
-        deck2.position.set(0, 0.024, -0.005);
+        const bridge = new THREE.Mesh(
+          new THREE.BoxGeometry(0.032, 0.02, 0.06),
+          new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2 })
+        );
+        bridge.position.set(0, 0.01, -0.006);
 
-        const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.005, 0.015, 8), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
-        chimney.position.set(0, 0.032, -0.015);
+        const controlTower = new THREE.Mesh(
+          new THREE.BoxGeometry(0.024, 0.015, 0.032),
+          new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2 })
+        );
+        controlTower.position.set(0, 0.026, 0.006);
 
-        group.add(hull, deck, deck2, chimney);
+        const chimney = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.005, 0.006, 0.022, 8),
+          new THREE.MeshStandardMaterial({ color: 0xef4444 })
+        );
+        chimney.position.set(0, 0.032, -0.022);
+
+        group.add(hull, deck, bridge, controlTower, chimney);
 
       } else if (mode === 'plane') {
-        const body = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.12, 12), new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.2 }));
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.16, 12), new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.2 }));
         body.rotation.x = Math.PI / 2;
 
-        const wings = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.003, 0.025), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
-        wings.position.set(0, 0, -0.01);
+        const wings = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.004, 0.035), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+        wings.position.set(0, 0, -0.012);
 
-        const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.025, 0.02), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
-        tailFin.position.set(0, 0.015, -0.045);
+        const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.035, 0.028), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+        tailFin.position.set(0, 0.02, -0.06);
         tailFin.rotation.x = -Math.PI / 6;
 
-        const engine1 = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.02, 8), new THREE.MeshStandardMaterial({ color: 0x475569 }));
+        const engine1 = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.028, 8), new THREE.MeshStandardMaterial({ color: 0x475569 }));
         engine1.rotation.x = Math.PI / 2;
-        engine1.position.set(0.03, -0.006, -0.008);
+        engine1.position.set(0.042, -0.008, -0.01);
 
         const engine2 = engine1.clone();
-        engine2.position.set(-0.03, -0.006, -0.008);
+        engine2.position.set(-0.042, -0.008, -0.01);
 
         group.add(body, wings, tailFin, engine1, engine2);
 
       } else if (mode === 'car') {
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.01, 0.055), new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2 }));
-        body.position.y = 0.006;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.014, 0.075), new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.2 }));
+        body.position.y = 0.008;
 
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.009, 0.028), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1 }));
-        cabin.position.set(0, 0.014, -0.003);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.012, 0.038), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1 }));
+        cabin.position.set(0, 0.019, -0.004);
 
-        const wheelGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.004, 12);
+        const wheelGeo = new THREE.CylinderGeometry(0.007, 0.007, 0.005, 12);
         wheelGeo.rotateZ(Math.PI / 2);
         const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
 
-        const w1 = new THREE.Mesh(wheelGeo, wheelMat); w1.position.set(0.013, 0.005, 0.016);
-        const w2 = new THREE.Mesh(wheelGeo, wheelMat); w2.position.set(-0.013, 0.005, 0.016);
-        const w3 = new THREE.Mesh(wheelGeo, wheelMat); w3.position.set(0.013, 0.005, -0.016);
-        const w4 = new THREE.Mesh(wheelGeo, wheelMat); w4.position.set(-0.013, 0.005, -0.016);
+        const w1 = new THREE.Mesh(wheelGeo, wheelMat); w1.position.set(0.018, 0.007, 0.022);
+        const w2 = new THREE.Mesh(wheelGeo, wheelMat); w2.position.set(-0.018, 0.007, 0.022);
+        const w3 = new THREE.Mesh(wheelGeo, wheelMat); w3.position.set(0.018, 0.007, -0.022);
+        const w4 = new THREE.Mesh(wheelGeo, wheelMat); w4.position.set(-0.018, 0.007, -0.022);
 
         group.add(body, cabin, w1, w2, w3, w4);
 
       } else if (mode === 'bus') {
-        const busBody = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.022, 0.075), new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.3 }));
-        busBody.position.y = 0.012;
+        const busBody = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.03, 0.1), new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.3 }));
+        busBody.position.y = 0.016;
 
-        const windowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.029, 0.008, 0.06), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1 }));
-        windowStrip.position.y = 0.015;
+        const windowStrip = new THREE.Mesh(new THREE.BoxGeometry(0.039, 0.011, 0.08), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1 }));
+        windowStrip.position.y = 0.02;
 
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(0.027, 0.003, 0.073), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
-        roof.position.y = 0.023;
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(0.037, 0.004, 0.098), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+        roof.position.y = 0.031;
 
         group.add(busBody, windowStrip, roof);
 
       } else {
-        // 🚆 火車：前後獨立關節組件結構（支援軟連結動態過彎折角）
         const trainMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.5, roughness: 0.2 });
         const blueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
         const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
         const lightMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
 
-        // 前車廂 (Car Lead)
         const carLead = new THREE.Group();
-        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.035), trainMat); b1.position.y = 0.009;
-        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.02, 4), blueMat);
-        nose.rotation.x = Math.PI / 2; nose.rotation.y = Math.PI / 4; nose.position.set(0, 0.008, 0.024); nose.scale.set(1, 0.6, 1);
-        const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.035), blueMat); stripe1.position.y = 0.008;
-        const headLight = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.003, 0.002), lightMat); headLight.position.set(0, 0.008, 0.033);
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.022, 0.048), trainMat); b1.position.y = 0.012;
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.028, 4), blueMat);
+        nose.rotation.x = Math.PI / 2; nose.rotation.y = Math.PI / 4; nose.position.set(0, 0.011, 0.033); nose.scale.set(1, 0.6, 1);
+        const stripe1 = new THREE.Mesh(new THREE.BoxGeometry(0.031, 0.005, 0.048), blueMat); stripe1.position.y = 0.011;
+        const headLight = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.004, 0.003), lightMat); headLight.position.set(0, 0.011, 0.045);
         carLead.add(b1, nose, stripe1, headLight);
 
-        // 後車廂 (Car Rear)
         const carRear = new THREE.Group();
-        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.035), trainMat); b2.position.y = 0.009;
-        const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.023, 0.004, 0.035), blueMat); stripe2.position.y = 0.008;
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.022, 0.048), trainMat); b2.position.y = 0.012;
+        const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.031, 0.005, 0.048), blueMat); stripe2.position.y = 0.011;
         carRear.add(b2, stripe2);
 
-        // 中間動態關節連結器 (Coupler)
-        const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.007, 0.015), darkMat);
-        coupler.position.y = 0.008;
+        const coupler = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.009, 0.02), darkMat);
+        coupler.position.y = 0.011;
 
         group.add(carLead, carRear, coupler);
         group.userData = { isTrain: true, carLead, carRear, coupler };
@@ -613,6 +630,7 @@
       updateVehiclePosition(currentProgress);
     }
 
+    // 🔍 動態計算交通工具隨鏡頭高度（畫面縮放）適度調整比例
     function updateVehiclePosition(progress) {
       if (segments.length === 0) return;
 
@@ -633,17 +651,20 @@
       const startVec = latLonToVector3(seg.fromCoords.lat, seg.fromCoords.lon, EARTH_RADIUS * 1.002);
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
-      const vehicleScale = Math.max(0.15, Math.min(1.0, distance * 0.45));
 
-      // 🚆 火車：獨立採樣車頭與車尾軌跡點，呈現軟連結動態關節過彎
+      // 🔍 載具尺寸基礎放大 + 畫面拉近/拉遠時動態適度開方響應縮放
+      const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+      const camAlt = Math.max(0.1, cameraDistance - EARTH_RADIUS);
+      const vehicleScale = Math.max(0.12, Math.min(1.8, (0.10 + Math.sqrt(camAlt) * 0.22)));
+
       if (vehicleMesh.userData.isTrain) {
         vehicleMesh.position.set(0, 0, 0);
         vehicleMesh.rotation.set(0, 0, 0);
         vehicleMesh.scale.set(1, 1, 1);
 
         const pathLength = seg.curvePath ? seg.curvePath.getLength() : distance;
-        const carriageSpacing = 0.045 * vehicleScale; 
-        const deltaT = seg.curvePath ? (carriageSpacing / Math.max(0.01, pathLength)) : (0.045 / Math.max(0.1, distance));
+        const carriageSpacing = 0.055 * vehicleScale; 
+        const deltaT = seg.curvePath ? (carriageSpacing / Math.max(0.01, pathLength)) : (0.055 / Math.max(0.1, distance));
 
         const tLead = segT;
         const tRear = segT - deltaT;
@@ -658,7 +679,6 @@
             posRear = seg.curvePath.getPointAt(Math.min(1, Math.max(0, tRear)));
             tangentRear = seg.curvePath.getTangentAt(Math.min(1, Math.max(0, tRear))).normalize();
           } else {
-            // 在起點剛出發時，後車廂沿起點切線反方向延伸放置，防止重疊與跳變
             const backDir = tangentLead.clone().negate();
             posRear = posLead.clone().add(backDir.multiplyScalar(carriageSpacing));
             tangentRear = tangentLead.clone();
@@ -675,32 +695,28 @@
         const carRear = vehicleMesh.userData.carRear;
         const coupler = vehicleMesh.userData.coupler;
 
-        // 前車廂獨立位置與動態轉向
         carLead.position.copy(posLead);
         carLead.quaternion.copy(getRotationQuaternion(posLead, tangentLead));
         carLead.scale.set(vehicleScale, vehicleScale, vehicleScale);
 
-        // 後車廂獨立位置與動態過彎轉向（靈活軟連結）
         carRear.position.copy(posRear);
         carRear.quaternion.copy(getRotationQuaternion(posRear, tangentRear));
         carRear.scale.set(vehicleScale, vehicleScale, vehicleScale);
 
-        // 關節連結器位在兩車廂中點並朝向傳動方向
         const posCoupler = posLead.clone().add(posRear).multiplyScalar(0.5);
         const tangentCoupler = posLead.clone().sub(posRear).normalize();
         coupler.position.copy(posCoupler);
         coupler.quaternion.copy(getRotationQuaternion(posCoupler, tangentCoupler));
         coupler.scale.set(vehicleScale, vehicleScale, vehicleScale);
 
-        if (cameraFollowMode) {
+        if (cameraFollowMode || (isPlaying && distance >= 1.8)) {
           const cameraAltitudeMultiplier = Math.max(1.02, 1.0 + (distance * 0.25));
           const targetCamPos = posLead.clone().multiplyScalar(cameraAltitudeMultiplier);
-          camera.position.lerp(targetCamPos, 0.1);
-          controls.target.lerp(posLead, 0.1);
+          camera.position.lerp(targetCamPos, 0.08);
+          controls.target.lerp(posLead, 0.08);
         }
 
       } else {
-        // 🚗 一般交通工具（汽車、巴士、飛機、渡輪）
         let posFront, tangent;
         if (seg.curvePath) {
           posFront = seg.curvePath.getPoint(segT);
@@ -721,17 +737,16 @@
         vehicleMesh.quaternion.copy(vehicleMesh.userData.currentQuat);
         vehicleMesh.scale.set(vehicleScale, vehicleScale, vehicleScale);
 
-        if (cameraFollowMode) {
+        if (cameraFollowMode || (isPlaying && distance >= 1.8)) {
           const cameraAltitudeMultiplier = Math.max(1.02, 1.0 + (distance * 0.25));
           const targetCamPos = posFront.clone().multiplyScalar(cameraAltitudeMultiplier);
-          camera.position.lerp(targetCamPos, 0.1);
-          controls.target.lerp(posFront, 0.1);
+          camera.position.lerp(targetCamPos, 0.08);
+          controls.target.lerp(posFront, 0.08);
         }
       }
 
       document.getElementById('current-leg-title').innerText = `${seg.from} ➔ ${seg.to} (${seg.depDate})`;
 
-      const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const baseScale = Math.min(2.5, Math.max(0.05, (cameraDistance - EARTH_RADIUS) * 0.15));
       pinMeshes.forEach(pin => {
         pin.scale.set(baseScale, baseScale, baseScale);
