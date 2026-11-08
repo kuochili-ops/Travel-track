@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 原生 WebGL 標籤完整全程自動錄影存檔</title>
+  <title>3D 漫遊旅程動畫 - 中轉站 2 秒日期切換與原生 WebGL 全程自動錄影存檔</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -54,7 +54,7 @@
   <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-30 hidden pointer-events-none">
     <div class="bg-red-500/90 text-white px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center space-x-2 shadow-lg animate-pulse">
       <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
-      <span>🔴 行程全程自動錄影中 (包含完整日期標籤...)</span>
+      <span>🔴 行程全程自動錄影中 (含地點與日期標籤...)</span>
     </div>
   </div>
 
@@ -66,7 +66,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">完整標籤全程自動錄影與自動下載存檔</p>
+        <p class="text-[10px] text-gray-400">中轉站 2 秒日期切換與全程自動錄影存檔</p>
       </div>
     </div>
 
@@ -79,7 +79,7 @@
   </div>
 
   <!-- Action Menu -->
-  <div id="action-menu" class="fixed top-16 right-4 z-30 flex-col space-y-2 hidden pointer-events-auto w-64">
+  <div id="action-menu" class="fixed top-16 right-4 z-50 flex-col space-y-2 hidden pointer-events-auto w-64">
     <button onclick="openFormModal()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-cyan-300 hover:bg-cyan-500/20 transition shadow-lg">
       <span class="flex items-center space-x-2">
         <i class="fa-solid fa-plus text-sm"></i>
@@ -225,6 +225,7 @@
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
+    let isStationTransition = false; // 中轉站先顯示抵達、2秒後顯示出發之狀態標記
     let lastPassedSegment = 0;
 
     let mediaRecorder;
@@ -261,7 +262,7 @@
       return `${dir} ${speed} km/h`;
     }
 
-    // 🎨 同步渲染 WebGL 原生 Sprite 貼圖（保證 100% 被 Canvas 錄影寫入）
+    // 🎨 同步繪製 WebGL 原生 3D Canvas 貼圖（確保完整被錄影抓取）
     function createWebGLSpriteTextureSync(options) {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -687,7 +688,7 @@
         trajectoryGroup.add(pinStart, pinEnd);
         pinMeshes.push(pinStart, pinEnd);
 
-        // 🏷️ 為每一段行程預先建構 3D 原生標籤 Sprite (100% 被 WebGL Capture 寫入影片)
+        // 🏷️ 預建構 3D 原生標籤 Sprite (100% 寫入影片)
         if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
         const isCrossDay = (seg.depDate !== seg.arrDate);
 
@@ -744,7 +745,7 @@
       const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
       const distance = startVec.distanceTo(endVec);
 
-      // 🔍 長路程動態放大載具比例
+      // 🔍 長路程載具比例加大算式
       const cameraDistance = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
       const camAlt = Math.max(0.2, cameraDistance - EARTH_RADIUS);
       const distanceScaleFactor = 1.0 + Math.min(1.8, distance * 0.7);
@@ -845,30 +846,37 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 控制 Sprite 標籤顯隱與動態縮放
+      // 🎬 3D 標籤切換與動態顯隱機制 (含中轉站 2 秒切換處理)
       const spriteScale = Math.max(0.6, Math.min(1.8, (cameraDistance - EARTH_RADIUS) * 0.22));
 
       segments.forEach((s, idx) => {
         if (s.depSpriteObj && s.arrSpriteObj) {
           if (idx === segIndex) {
-            // 目前正在執行的行程段落
-            if (segT < 0.6) {
-              s.depSpriteObj.visible = true;
-              s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-              s.depSpriteObj.material.opacity = Math.max(0, 1 - (segT / 0.6));
-            } else {
+            if (isStationTransition) {
+              // ⏱️ 中轉站前 2 秒：只顯示前一段抵達標籤，隱藏後一段出發標籤
               s.depSpriteObj.visible = false;
-            }
-
-            if (segT > 0.4) {
               s.arrSpriteObj.visible = true;
               s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-              s.arrSpriteObj.material.opacity = Math.max(0, (segT - 0.4) / 0.6);
+              s.arrSpriteObj.material.opacity = 1.0;
             } else {
-              s.arrSpriteObj.visible = false;
+              // 移動過程中的動態漸變顯隱
+              if (segT < 0.5) {
+                s.depSpriteObj.visible = true;
+                s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
+                s.depSpriteObj.material.opacity = Math.max(0, 1 - (segT / 0.5));
+              } else {
+                s.depSpriteObj.visible = false;
+              }
+
+              if (segT > 0.5) {
+                s.arrSpriteObj.visible = true;
+                s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
+                s.arrSpriteObj.material.opacity = Math.max(0, (segT - 0.5) / 0.5);
+              } else {
+                s.arrSpriteObj.visible = false;
+              }
             }
           } else {
-            // 非目前行程段落隱藏標籤
             s.depSpriteObj.visible = false;
             s.arrSpriteObj.visible = false;
           }
@@ -959,29 +967,42 @@
       }
     }
 
-    // 📹 開始錄影：自動回到第一段出發並播放，最後自動下載儲存
+    // 📹 開始自動錄影全流程
     function startRecording() {
-      if (segments.length === 0) {
-        alert("請先新增行程再開始錄影！");
+      if (!segments || segments.length === 0) {
+        alert("⚠️ 請先新增行程記錄後再開始錄影！");
         return;
       }
 
       const canvas = renderer.domElement;
+      if (!canvas || typeof canvas.captureStream !== 'function') {
+        alert("❌ 您的瀏覽器不支援 Canvas 畫面擷取功能。");
+        return;
+      }
+
       const stream = canvas.captureStream(30);
       recordedChunks = [];
 
-      let options = { mimeType: 'video/webm;codecs=vp9' };
-      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options = { mimeType: 'video/webm' };
-      }
-      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options = { mimeType: 'video/mp4' };
+      let options = {};
+      const types = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+      ];
+
+      for (let t of types) {
+        if (MediaRecorder.isTypeSupported(t)) {
+          options = { mimeType: t };
+          break;
+        }
       }
 
       try {
         mediaRecorder = new MediaRecorder(stream, options);
       } catch (e) {
-        alert("您的瀏覽器暫不支援 Screen Canvas 錄影功能");
+        console.error("MediaRecorder 初始化失敗:", e);
+        alert("❌ 錄影功能初始化失敗：" + e.message);
         return;
       }
 
@@ -989,8 +1010,9 @@
         if (e.data && e.data.size > 0) recordedChunks.push(e.data);
       };
 
-      // 🎬 自動儲存機制
+      // 🎬 播放結束自動下載檔案
       mediaRecorder.onstop = function() {
+        if (recordedChunks.length === 0) return;
         const mimeType = options.mimeType || 'video/webm';
         const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
         const blob = new Blob(recordedChunks, { type: mimeType });
@@ -1000,12 +1022,12 @@
         a.href = url;
         a.download = `3D_Journey_${new Date().toISOString().slice(0,10)}.${ext}`;
         document.body.appendChild(a);
-        a.click(); // 自動點擊下載存檔
+        a.click(); // 自動觸發下載
 
         setTimeout(() => {
           document.body.removeChild(a);
           window.URL.revokeObjectURL(url);
-        }, 300);
+        }, 500);
 
         document.getElementById('rec-badge').classList.add('hidden');
         document.getElementById('txt-rec-btn').innerText = "錄影整段行程";
@@ -1017,10 +1039,11 @@
       document.getElementById('rec-badge').classList.remove('hidden');
       document.getElementById('txt-rec-btn').innerText = "停止錄影並下載";
 
-      // 重置為第一段路程開頭並播放
+      toggleMenu();
       currentProgress = 0;
       isPausedAtEnd = false;
       isLegPaused = false;
+      isStationTransition = false;
       lastPassedSegment = 0;
       togglePlay(true);
     }
@@ -1196,6 +1219,7 @@
     function seekProgress(val) {
       isPausedAtEnd = false;
       isLegPaused = false;
+      isStationTransition = false;
       currentProgress = val / 100;
       lastPassedSegment = Math.floor(currentProgress * segments.length);
       updateVehiclePosition(currentProgress);
@@ -1231,10 +1255,20 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
+          // 🛑 到達中轉站停靠與 2 秒標籤切換邏輯
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
+            isStationTransition = true; // 開啟階段 1：顯示抵達標籤
             currentProgress = currentSegIdx / totalSegments;
 
+            // ⏱️ 2 秒過後：切換為顯示下一段的出發地點標籤與日期
+            setTimeout(() => {
+              if (isPlaying) {
+                isStationTransition = false;
+              }
+            }, 2000);
+
+            // ⏱️ 4.5 秒過後：繼續出發前往下一站
             setTimeout(() => {
               if (isPlaying) {
                 lastPassedSegment = currentSegIdx;
@@ -1242,11 +1276,12 @@
               }
             }, 4500);
           } 
+          // 🏁 播完最後一段行程
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
 
-            // 🎬 當最後一段行程到達結束時，自動觸發停止錄影與下載存檔
+            // 自動觸發停止錄影與下載存檔
             if (isRecording) {
               stopRecording();
             }
