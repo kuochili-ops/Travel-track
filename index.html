@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫 - 修正介面遮蔽與標籤相容性</title>
+  <title>3D 漫遊旅程動畫</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -38,6 +38,65 @@
       display: block;
     }
 
+    /* 🏷️ 2D 螢幕精確定位標籤 Overlay */
+    #label-overlay-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 10;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .map-label-card {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      margin-top: -10px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+      border-radius: 10px;
+      padding: 6px 10px;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      white-space: nowrap;
+      transition: opacity 0.3s ease, transform 0.2s ease-out;
+      border: 1.5px solid #38bdf8;
+    }
+
+    .map-label-card.arr-card {
+      border-color: #f59e0b;
+    }
+
+    .map-label-card.cross-card {
+      border-color: #f43f5e;
+      background: linear-gradient(135deg, rgba(88, 28, 135, 0.95), rgba(159, 18, 57, 0.95));
+    }
+
+    .map-label-card::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #38bdf8;
+    }
+
+    .map-label-card.arr-card::after {
+      border-top-color: #f59e0b;
+    }
+
+    .map-label-card.cross-card::after {
+      border-top-color: #f43f5e;
+    }
+
     .ui-dock { position: fixed; z-index: 20; pointer-events: auto; transform: translateZ(0); }
     .glass-panel { background: rgba(15, 23, 42, 0.88); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); }
     .custom-scrollbar::-webkit-scrollbar { width: 5px; }
@@ -50,13 +109,8 @@
   <!-- 3D Canvas -->
   <div id="canvas-container"></div>
 
-  <!-- 🔴 錄影中狀態標籤 -->
-  <div id="rec-badge" class="fixed top-4 left-1/2 -translate-x-1/2 z-[70] hidden pointer-events-none">
-    <div class="bg-red-500/90 text-white px-3.5 py-1.5 rounded-full text-xs font-bold flex items-center space-x-2 shadow-lg animate-pulse">
-      <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
-      <span>🔴 行程全程自動錄影中...</span>
-    </div>
-  </div>
+  <!-- 2D 標籤卡片層 -->
+  <div id="label-overlay-container"></div>
 
   <!-- Header Panel -->
   <div class="fixed top-4 left-4 right-4 z-20 flex justify-between items-center pointer-events-none">
@@ -66,7 +120,7 @@
       </div>
       <div>
         <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">修正介面遮蔽與標籤相容性</p>
+        <p class="text-[10px] text-gray-400">適中標籤與快抵達顯示模式</p>
       </div>
     </div>
 
@@ -78,7 +132,7 @@
     </div>
   </div>
 
-  <!-- Action Menu (已將 Z-index 調整為合適層級) -->
+  <!-- Action Menu -->
   <div id="action-menu" class="fixed top-16 right-4 z-40 flex-col space-y-2 hidden pointer-events-auto w-64">
     <button onclick="openFormModal()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-cyan-300 hover:bg-cyan-500/20 transition shadow-lg">
       <span class="flex items-center space-x-2">
@@ -99,11 +153,6 @@
     <button onclick="shareItinerary()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 text-emerald-300 hover:bg-emerald-500/20 transition shadow-lg">
       <i class="fa-solid fa-share-nodes text-sm"></i>
       <span>分享短網址 (含路程)</span>
-    </button>
-
-    <button onclick="toggleRecording()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center space-x-2 text-rose-300 hover:bg-rose-500/20 transition shadow-lg">
-      <i class="fa-solid fa-video text-sm"></i>
-      <span id="txt-rec-btn">錄影整段行程</span>
     </button>
 
     <button id="btn-camera-mode" onclick="toggleCameraFollow()" class="w-full glass-panel px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between text-gray-300 hover:bg-white/10 transition shadow-lg">
@@ -139,7 +188,7 @@
     </button>
   </div>
 
-  <!-- Form Modal (提升層級至 z-[60] 確保蓋過所有元素) -->
+  <!-- Form Modal -->
   <div id="modal-form" class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
     <div class="glass-panel w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 border border-white/20">
       <div class="flex justify-between items-center border-b border-white/10 pb-3">
@@ -194,7 +243,7 @@
     </div>
   </div>
 
-  <!-- Form List Modal (提升層級至 z-[60]) -->
+  <!-- Form List Modal -->
   <div id="modal-list" class="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center hidden p-4">
     <div class="glass-panel w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-4 border border-white/20">
       <div class="flex justify-between items-center border-b border-white/10 pb-3">
@@ -212,7 +261,6 @@
       </div>
     </div>
   </div>
-
   <script>
     let scene, camera, renderer, controls;
     let globeMesh, vehicleMesh, trajectoryGroup;
@@ -226,11 +274,6 @@
     let isPausedAtEnd = false;
     let isLegPaused = false;
     let lastPassedSegment = 0;
-
-    let mediaRecorder;
-    let recordedChunks = [];
-    let isRecording = false;
-
     let currentVehicleMode = null;
 
     const EARTH_RADIUS = 5;
@@ -259,91 +302,6 @@
       const speed = Math.floor(Math.random() * 18) + 6;
       const dir = dirs[Math.floor(Math.random() * dirs.length)];
       return `${dir} ${speed} km/h`;
-    }
-
-    // 🎨 相容性修復：使用原生路徑繪製圓角矩形，取代會報錯的 ctx.roundRect
-    function drawCompatibleRoundRect(ctx, x, y, width, height, radius) {
-      ctx.beginPath();
-      ctx.moveTo(x + radius, y);
-      ctx.arcTo(x + width, y, x + width, y + height, radius);
-      ctx.arcTo(x + width, y + height, x, y + height, radius);
-      ctx.arcTo(x, y + height, x, y, radius);
-      ctx.arcTo(x, y, x + width, y, radius);
-      ctx.closePath();
-    }
-
-    function createWebGLSpriteTextureSync(options) {
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-
-      const isArrival = options.type === 'arr';
-      const isCrossDay = options.isCrossDay || false;
-      const titleText = options.title || (isArrival ? "🏁 到達地點" : "🚀 出發地點");
-      const nameText = options.name || "";
-      const dateText = options.date || "";
-      const subText = options.wind || "";
-
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
-      drawCompatibleRoundRect(ctx, 16, 16, 480, 224, 28);
-      ctx.fill();
-
-      if (!isArrival) {
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText(titleText, 40, 65);
-      } else if (isCrossDay) {
-        const grad = ctx.createLinearGradient(0, 0, 512, 256);
-        grad.addColorStop(0, '#581c87');
-        grad.addColorStop(1, '#9f1239');
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        ctx.strokeStyle = '#f43f5e';
-        ctx.lineWidth = 8;
-        ctx.stroke();
-
-        ctx.fillStyle = '#fda4af';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText("🏁 跨日到達", 40, 65);
-
-        ctx.fillStyle = '#ef4444';
-        drawCompatibleRoundRect(ctx, 360, 35, 100, 40, 10);
-        ctx.fill();
-        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px sans-serif';
-        ctx.fillText("跨日", 388, 63);
-      } else {
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        ctx.fillStyle = '#fbbf24';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText(titleText, 40, 65);
-      }
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 38px sans-serif';
-      ctx.fillText(nameText, 40, 120);
-
-      ctx.fillStyle = isArrival && isCrossDay ? '#fecdd3' : '#cbd5e1';
-      ctx.font = 'bold 28px monospace';
-      ctx.fillText(`📅 日期: ${dateText}`, 40, 165);
-
-      if (subText) {
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = '22px monospace';
-        ctx.fillText(`💨 ${subText}`, 40, 205);
-      }
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.needsUpdate = true;
-      return texture;
     }
 
     async function create8KPrecisionTexture() {
@@ -652,6 +610,42 @@
       return points;
     }
 
+    // 🎨 適當尺寸的 HTML 標籤卡片
+    function createHTMLLabelOverlay(seg, idx) {
+      const container = document.getElementById('label-overlay-container');
+      const isCross = seg.depDate !== seg.arrDate;
+
+      // 1. 出發卡片
+      const depCard = document.createElement('div');
+      depCard.id = `label-dep-${idx}`;
+      depCard.className = 'map-label-card';
+      depCard.innerHTML = `
+        <div style="font-size: 10px; font-weight: bold; color: #38bdf8;">🚀 出發地點</div>
+        <div style="font-size: 13px; font-weight: bold; color: #ffffff; margin-top: 1px;">${seg.from}</div>
+        <div style="font-size: 9px; font-family: monospace; color: #cbd5e1; margin-top: 1px;">📅 日期: ${seg.depDate}</div>
+      `;
+
+      // 2. 到達卡片
+      const arrCard = document.createElement('div');
+      arrCard.id = `label-arr-${idx}`;
+      arrCard.className = `map-label-card arr-card ${isCross ? 'cross-card' : ''}`;
+      arrCard.innerHTML = `
+        <div style="font-size: 10px; font-weight: bold; color: ${isCross ? '#fda4af' : '#fbbf24'}; flex-direction: row; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+          <span>${isCross ? '🏁 跨日到達' : '🏁 到達地點'}</span>
+          ${isCross ? '<span style="font-size: 8px; background: #ef4444; color: white; padding: 1px 3px; border-radius: 3px; margin-left: 4px;">跨日</span>' : ''}
+        </div>
+        <div style="font-size: 13px; font-weight: bold; color: #ffffff; margin-top: 1px;">${seg.to}</div>
+        <div style="font-size: 9px; font-family: monospace; color: ${isCross ? '#fecdd3' : '#cbd5e1'}; margin-top: 1px;">📅 日期: ${seg.arrDate}</div>
+        <div style="font-size: 8.5px; font-family: monospace; color: #38bdf8; margin-top: 1px;">💨 風速: ${seg.windInfo}</div>
+      `;
+
+      container.appendChild(depCard);
+      container.appendChild(arrCard);
+
+      seg.depCardEl = depCard;
+      seg.arrCardEl = arrCard;
+    }
+
     async function rebuildJourneyPaths() {
       if (vehicleMesh) {
         scene.remove(vehicleMesh);
@@ -661,6 +655,7 @@
       trajectoryGroup.clear();
       pinMeshes = [];
 
+      document.getElementById('label-overlay-container').innerHTML = "";
       document.getElementById('count-segments').innerText = segments.length;
 
       if (segments.length === 0) return;
@@ -669,6 +664,9 @@
         const seg = segments[i];
         const startVec = latLonToVector3(seg.fromCoords.lat, seg.fromCoords.lon, EARTH_RADIUS * 1.002);
         const endVec = latLonToVector3(seg.toCoords.lat, seg.toCoords.lon, EARTH_RADIUS * 1.002);
+
+        seg.startVec = startVec;
+        seg.endVec = endVec;
 
         let points;
         if (seg.mode === 'plane') {
@@ -697,42 +695,25 @@
         trajectoryGroup.add(pinStart, pinEnd);
         pinMeshes.push(pinStart, pinEnd);
 
-        // 🏷️ 預創建 3D Sprite 標籤卡片
         if (!seg.windInfo) seg.windInfo = getRandomSurfaceWind();
-        const isCrossDay = (seg.depDate !== seg.arrDate);
-
-        // 1. 出發標籤 Sprite
-        const depTex = createWebGLSpriteTextureSync({
-          type: 'dep',
-          title: '🚀 出發地點',
-          name: seg.from,
-          date: seg.depDate
-        });
-        const depMat = new THREE.SpriteMaterial({ map: depTex, transparent: true, depthTest: false });
-        seg.depSpriteObj = new THREE.Sprite(depMat);
-        seg.depSpriteObj.position.copy(startVec.clone().multiplyScalar(1.06));
-        seg.depSpriteObj.visible = false;
-        seg.depSpriteObj.renderOrder = 999;
-        trajectoryGroup.add(seg.depSpriteObj);
-
-        // 2. 到達標籤 Sprite
-        const arrTex = createWebGLSpriteTextureSync({
-          type: 'arr',
-          title: isCrossDay ? '🏁 跨日到達' : '🏁 到達地點',
-          name: seg.to,
-          date: seg.arrDate,
-          wind: `風速: ${seg.windInfo}`,
-          isCrossDay: isCrossDay
-        });
-        const arrMat = new THREE.SpriteMaterial({ map: arrTex, transparent: true, depthTest: false });
-        seg.arrSpriteObj = new THREE.Sprite(arrMat);
-        seg.arrSpriteObj.position.copy(endVec.clone().multiplyScalar(1.06));
-        seg.arrSpriteObj.visible = false;
-        seg.arrSpriteObj.renderOrder = 999;
-        trajectoryGroup.add(seg.arrSpriteObj);
+        
+        createHTMLLabelOverlay(seg, i);
       }
 
       updateVehiclePosition(currentProgress);
+    }
+
+    function toScreenPosition(vector, camera) {
+      const vec = vector.clone();
+      vec.project(camera);
+
+      const widthHalf = window.innerWidth / 2;
+      const heightHalf = window.innerHeight / 2;
+
+      return {
+        x: (vec.x * widthHalf) + widthHalf,
+        y: -(vec.y * heightHalf) + heightHalf
+      };
     }
 
     function updateVehiclePosition(progress) {
@@ -856,23 +837,33 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 確保標籤 100% 全程顯示，不閃爍也不淡出
-      const spriteScale = Math.max(0.6, Math.min(1.8, (cameraDistance - EARTH_RADIUS) * 0.22));
-
+      // 🎬 核心邏輯：控制「出發標籤」恆亮，「到達標籤」在進度超過 70% (快抵達) 時才顯示
       segments.forEach((s, idx) => {
-        if (s.depSpriteObj && s.arrSpriteObj) {
+        if (s.depCardEl && s.arrCardEl) {
           if (idx === segIndex) {
-            // 目前正在跑的行程段落：起點與終點標籤「同時」全亮顯示
-            s.depSpriteObj.visible = true;
-            s.arrSpriteObj.visible = true;
-            s.depSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-            s.arrSpriteObj.scale.set(spriteScale * 2.2, spriteScale * 1.1, 1);
-            s.depSpriteObj.material.opacity = 1.0;
-            s.arrSpriteObj.material.opacity = 1.0;
+            const depPos = toScreenPosition(s.startVec, camera);
+            const arrPos = toScreenPosition(s.endVec, camera);
+
+            const depCamDist = camera.position.distanceTo(s.startVec);
+            const arrCamDist = camera.position.distanceTo(s.endVec);
+            const camCenterDist = camera.position.distanceTo(new THREE.Vector3(0,0,0));
+
+            const isDepFront = depCamDist < camCenterDist;
+            const isArrFront = arrCamDist < camCenterDist;
+
+            // 1. 出發標籤：只要在正面就顯示
+            s.depCardEl.style.display = isDepFront ? 'flex' : 'none';
+            s.depCardEl.style.left = `${depPos.x}px`;
+            s.depCardEl.style.top = `${depPos.y}px`;
+
+            // 2. 到達標籤：行駛進度 segT >= 0.70 且在正面時才顯示
+            const isNearDestination = segT >= 0.70;
+            s.arrCardEl.style.display = (isArrFront && isNearDestination) ? 'flex' : 'none';
+            s.arrCardEl.style.left = `${arrPos.x}px`;
+            s.arrCardEl.style.top = `${arrPos.y}px`;
           } else {
-            // 非目前行程段落：強制隱藏
-            s.depSpriteObj.visible = false;
-            s.arrSpriteObj.visible = false;
+            s.depCardEl.style.display = 'none';
+            s.arrCardEl.style.display = 'none';
           }
         }
       });
@@ -953,104 +944,12 @@
       }
     }
 
-    function toggleRecording() {
-      if (isRecording) {
-        stopRecording();
-      } else {
-        startRecording();
-      }
-    }
-
-    function startRecording() {
-      if (!segments || segments.length === 0) {
-        alert("⚠️ 請先新增行程記錄後再開始錄影！");
-        return;
-      }
-
-      const canvas = renderer.domElement;
-      if (!canvas || typeof canvas.captureStream !== 'function') {
-        alert("❌ 您的瀏覽器不支援 Canvas 畫面擷取功能。");
-        return;
-      }
-
-      const stream = canvas.captureStream(30);
-      recordedChunks = [];
-
-      let options = {};
-      const types = [
-        'video/webm;codecs=vp9',
-        'video/webm;codecs=vp8',
-        'video/webm',
-        'video/mp4'
-      ];
-
-      for (let t of types) {
-        if (MediaRecorder.isTypeSupported(t)) {
-          options = { mimeType: t };
-          break;
-        }
-      }
-
-      try {
-        mediaRecorder = new MediaRecorder(stream, options);
-      } catch (e) {
-        console.error("MediaRecorder 初始化失敗:", e);
-        alert("❌ 錄影功能初始化失敗：" + e.message);
-        return;
-      }
-
-      mediaRecorder.ondataavailable = function(e) {
-        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = function() {
-        if (recordedChunks.length === 0) return;
-        const mimeType = options.mimeType || 'video/webm';
-        const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-        const blob = new Blob(recordedChunks, { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `3D_Journey_${new Date().toISOString().slice(0,10)}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-
-        setTimeout(() => {
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(url);
-        }, 500);
-
-        document.getElementById('rec-badge').classList.add('hidden');
-        document.getElementById('txt-rec-btn').innerText = "錄影整段行程";
-        isRecording = false;
-      };
-
-      mediaRecorder.start(100);
-      isRecording = true;
-      document.getElementById('rec-badge').classList.remove('hidden');
-      document.getElementById('txt-rec-btn').innerText = "停止錄影並下載";
-
-      toggleMenu(); // 開始錄影時自動隱藏選單
-      currentProgress = 0;
-      isPausedAtEnd = false;
-      isLegPaused = false;
-      lastPassedSegment = 0;
-      togglePlay(true);
-    }
-
-    function stopRecording() {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-      }
-    }
-
     function toggleMenu() { 
       document.getElementById('action-menu').classList.toggle('hidden'); 
     }
     
     function openFormModal(editIdx = -1) {
-      document.getElementById('action-menu').classList.add('hidden'); // 打開彈窗時自動隱藏主選單，避免遮蔽
+      document.getElementById('action-menu').classList.add('hidden');
       document.getElementById('editing-index').value = editIdx;
       if (editIdx >= 0) {
         const seg = segments[editIdx];
@@ -1116,7 +1015,7 @@
     }
 
     function openFormListModal() {
-      document.getElementById('action-menu').classList.add('hidden'); // 打開彈窗時自動隱藏主選單，避免遮蔽
+      document.getElementById('action-menu').classList.add('hidden');
       renderSegmentList();
       document.getElementById('modal-list').classList.remove('hidden');
     }
@@ -1194,6 +1093,7 @@
       }
       currentVehicleMode = null;
       trajectoryGroup.clear();
+      document.getElementById('label-overlay-container').innerHTML = "";
       document.getElementById('current-leg-title').innerText = "等待輸入行程...";
       document.getElementById('count-segments').innerText = "0";
       togglePlay(false);
@@ -1249,7 +1149,6 @@
           const totalSegments = segments.length;
           const currentSegIdx = Math.floor(currentProgress * totalSegments);
 
-          // 🛑 到達中途站暫停機制（停靠 2.5 秒，並無縫切換雙標籤）
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
             currentProgress = currentSegIdx / totalSegments;
@@ -1261,14 +1160,9 @@
               }
             }, 2500);
           } 
-          // 🏁 播完最後一段行程
           else if (currentProgress >= 1) {
             currentProgress = 1;
             isPausedAtEnd = true;
-
-            if (isRecording) {
-              stopRecording();
-            }
 
             setTimeout(() => {
               if (isPlaying) {
@@ -1281,6 +1175,8 @@
         }
 
         document.getElementById('progress-bar').value = currentProgress * 100;
+        updateVehiclePosition(currentProgress);
+      } else if (segments.length > 0) {
         updateVehiclePosition(currentProgress);
       }
 
