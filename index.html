@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>3D 漫遊旅程動畫</title>
+  <title>𓃥 白六旅遊軌跡記錄</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -130,8 +130,8 @@
         <i class="fa-solid fa-earth-asia text-white text-sm"></i>
       </div>
       <div>
-        <h1 class="text-sm font-bold tracking-wide">3D 漫遊旅程動畫</h1>
-        <p class="text-[10px] text-gray-400">淡入淡出標籤與 2 秒自動流暢切換</p>
+        <h1 class="text-sm font-bold tracking-wide">𓃥 白六旅遊軌跡記錄</h1>
+        <p class="text-[10px] text-gray-400">到達滯留 2 秒 + 出發預備 1 秒動態轉場</p>
       </div>
     </div>
 
@@ -284,6 +284,7 @@
 
     let isPausedAtEnd = false;
     let isLegPaused = false;
+    let pausePhase = 0; // 0: 正常行駛, 1: 抵達滯留(2秒到達標籤), 2: 出發預備(1秒出發標籤)
     let lastPassedSegment = 0;
     let currentVehicleMode = null;
 
@@ -847,7 +848,7 @@
         pin.scale.set(baseScale, baseScale, baseScale);
       });
 
-      // 🎬 精確淡入淡出標籤切換邏輯
+      // 🎬 動態階段控制：滯留 2 秒到達標籤 ➔ 切換 1 秒出發標籤 ➔ 出發
       segments.forEach((s, idx) => {
         if (s.depCardEl && s.arrCardEl) {
           const depPos = toScreenPosition(s.startVec, camera);
@@ -868,22 +869,24 @@
           let showDep = false;
           let showArr = false;
 
-          if (isLegPaused && idx === segIndex - 1) {
-            // 📍 2 秒滯留期：淡入顯示上一段「到達標籤」
-            showArr = isArrFront;
-          } else if (idx === segIndex) {
-            if (!isLegPaused) {
-              // 🚀 2 秒過後：淡入顯示當前段「出發標籤」
+          if (isLegPaused) {
+            if (pausePhase === 1 && idx === segIndex - 1) {
+              // 📍 Phase 1（0s-2s）：顯示上一段「到達標籤」
+              showArr = isArrFront;
+            } else if (pausePhase === 2 && idx === segIndex) {
+              // 🚀 Phase 2（2s-3s）：在原地切換顯示當前段「出發標籤」（等待1秒）
               showDep = isDepFront;
             }
+          } else if (idx === segIndex) {
+            // 正常行駛階段：後半段（>70%）顯示到達標籤，前半段顯示出發標籤
+            showDep = isDepFront;
 
-            // 🏁 超過 70% 進度：淡入顯示當前段「到達標籤」
             if (segT >= 0.70) {
               showArr = isArrFront;
             }
           }
 
-          // ✨ 使用 classList 切換實現 0.4 秒平滑淡入淡出
+          // ✨ 使用 classList 切換 0.4s 淡入淡出
           s.depCardEl.classList.toggle('visible', showDep);
           s.arrCardEl.classList.toggle('visible', showArr);
         }
@@ -1135,6 +1138,7 @@
     function seekProgress(val) {
       isPausedAtEnd = false;
       isLegPaused = false;
+      pausePhase = 0;
       currentProgress = val / 100;
       lastPassedSegment = Math.floor(currentProgress * segments.length);
       updateVehiclePosition(currentProgress);
@@ -1160,6 +1164,7 @@
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     }
 
+    // ⏱️ 精確轉場計時器（到達滯留 2 秒 ➔ 出發標籤顯示 1 秒 ➔ 繼續前進）
     function animate() {
       requestAnimationFrame(animate);
 
@@ -1172,14 +1177,25 @@
 
           if (currentProgress < 1 && currentSegIdx > lastPassedSegment && currentSegIdx < totalSegments) {
             isLegPaused = true;
-            currentProgress = currentSegIdx / totalSegments;
+            pausePhase = 1; // 第一階段：抵達滯留 2 秒
+            currentProgress = currentSegIdx / totalSegments; 
 
+            // 1️⃣ 滯留 2 秒（保持顯示到達標籤）
             setTimeout(() => {
-              if (isPlaying) {
-                lastPassedSegment = currentSegIdx;
-                isLegPaused = false;
+              if (isPlaying && isLegPaused) {
+                pausePhase = 2; // 第二階段：切換為出發標籤，預備 1 秒
+                updateVehiclePosition(currentProgress);
+
+                // 2️⃣ 預備 1 秒後正式出發
+                setTimeout(() => {
+                  if (isPlaying && isLegPaused) {
+                    lastPassedSegment = currentSegIdx;
+                    isLegPaused = false;
+                    pausePhase = 0; // 解除暫停，繼續前進
+                  }
+                }, 1000); // ⏱️ 出發標籤顯示 1 秒
               }
-            }, 2000);
+            }, 2000); // ⏱️ 到達標籤停留 2 秒
           } 
           else if (currentProgress >= 1) {
             currentProgress = 1;
@@ -1190,6 +1206,7 @@
                 currentProgress = 0;
                 lastPassedSegment = 0;
                 isPausedAtEnd = false;
+                pausePhase = 0;
               }
             }, 5000);
           }
